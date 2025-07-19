@@ -27,6 +27,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using OpenSim.Framework;
 using OpenMetaverse;
 
@@ -40,6 +41,8 @@ namespace OpenSim.Services.Interfaces
 
     public interface IInventoryService
     {
+        #region Sync Methods
+
         /// <summary>
         /// Create the entire inventory for a given user
         /// </summary>
@@ -200,5 +203,30 @@ namespace OpenSim.Services.Interfaces
         /// <returns>The permissions or 0 if no such asset is found in
         /// the user's inventory</returns>
         int GetAssetPermissions(UUID userID, UUID assetID);
+
+        #region Async Methods
+        Task<bool> CreateUserInventoryAsync(UUID user);
+        Task<List<InventoryFolderBase>> GetInventorySkeletonAsync(UUID userId);
+        Task<InventoryFolderBase> GetRootFolderAsync(UUID userID);
+        Task<InventoryFolderBase> GetFolderForTypeAsync(UUID userID, FolderType type);
+        Task<InventoryCollection> GetFolderContentAsync(UUID userID, UUID folderID);
+        Task<InventoryCollection[]> GetMultipleFoldersContentAsync(UUID userID, UUID[] folderIDs);
+        Task<List<InventoryItemBase>> GetFolderItemsAsync(UUID userID, UUID folderID);
+        Task<bool> AddFolderAsync(InventoryFolderBase folder);
+        Task<bool> UpdateFolderAsync(InventoryFolderBase folder);
+        Task<bool> MoveFolderAsync(InventoryFolderBase folder);
+        Task<bool> DeleteFoldersAsync(UUID userID, List<UUID> folderIDs);
+        Task<bool> PurgeFolderAsync(InventoryFolderBase folder);
+        Task<bool> AddItemAsync(InventoryItemBase item);
+        Task<bool> UpdateItemAsync(InventoryItemBase item);
+        Task<bool> MoveItemsAsync(UUID ownerID, List<InventoryItemBase> items);
+        Task<bool> DeleteItemsAsync(UUID userID, List<UUID> itemIDs);
+        Task<InventoryItemBase> GetItemAsync(UUID userID, UUID itemID);
+        Task<InventoryItemBase[]> GetMultipleItemsAsync(UUID userID, UUID[] ids);
+        Task<InventoryFolderBase> GetFolderAsync(UUID userID, UUID folderID);
+        Task<bool> HasInventoryForUserAsync(UUID userID);
+        Task<List<InventoryItemBase>> GetActiveGesturesAsync(UUID userId);
+        Task<int> GetAssetPermissionsAsync(UUID userID, UUID assetID);
+        #endregion
     }
 }

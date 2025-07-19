@@ -27,6 +27,7 @@
 
 using System.Net;
 using System.Reflection;
+using System.Threading.Tasks;
 using OpenMetaverse;
 using OpenMetaverse.StructuredData;
 using OpenSim.Framework;
@@ -52,7 +53,7 @@ namespace OpenSim.Capabilities.Handlers
             m_agentID = agentId;
         }
 
-        public string FetchInventoryRequest(string request, string path, string param, IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
+        public async Task<string> FetchInventoryRequest(string request, string path, string param, IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
             //m_log.DebugFormat("[FETCH INVENTORY HANDLER]: Received FetchInventory capability request {0}", request);
 
@@ -73,11 +74,11 @@ namespace OpenSim.Capabilities.Handlers
             {
                 items = new InventoryItemBase[itemsRequested.Count];
                 foreach (UUID id in itemIDs)
-                    items[i++] = m_inventoryService.GetItem(UUID.Zero, id);
+                    items[i++] = await m_inventoryService.GetItemAsync(UUID.Zero, id);
             }
             else
             {
-                items = m_inventoryService.GetMultipleItems(m_agentID, itemIDs);
+                items = await m_inventoryService.GetMultipleItemsAsync(m_agentID, itemIDs);
             }
 
             osUTF8 lsl = LLSDxmlEncode2.Start(4096);
@@ -107,7 +108,7 @@ namespace OpenSim.Capabilities.Handlers
             return LLSDxmlEncode2.End(lsl);
         }
 
-        public void FetchInventorySimpleRequest(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse, OSDMap requestmap, ExpiringKey<UUID> BadRequests)
+        public async Task FetchInventorySimpleRequest(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse, OSDMap requestmap, ExpiringKey<UUID> BadRequests)
         {
             //m_log.DebugFormat("[FETCH INVENTORY HANDLER]: Received FetchInventory capability request {0}", request);
 
@@ -132,7 +133,7 @@ namespace OpenSim.Capabilities.Handlers
             try
             {
                 // badrequests still not filled
-                items = m_inventoryService.GetMultipleItems(m_agentID, itemIDs);
+                items = await m_inventoryService.GetMultipleItemsAsync(m_agentID, itemIDs);
             }
             catch{ }
 

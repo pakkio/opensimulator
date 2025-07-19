@@ -32,6 +32,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Reflection;
+using System.Threading.Tasks;
 using Nini.Config;
 
 using OpenSim.Framework;
@@ -147,6 +148,14 @@ namespace OpenSim.Services.Connectors
             return true;
         }
 
+        public async Task<bool> CreateUserInventoryAsync(UUID principalID)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                $"METHOD=CREATEUSERINVENTORY&PRINCIPAL={principalID}");
+
+            return CheckReturn(ret);
+        }
+
         public bool CreateUserInventory(UUID principalID)
         {
             Dictionary<string,object> ret = MakeRequest(
@@ -178,6 +187,16 @@ namespace OpenSim.Services.Connectors
             }
 
             return fldrs;
+        }
+
+        public async Task<InventoryFolderBase> GetRootFolderAsync(UUID principalID)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync($"METHOD=GETROOTFOLDER&PRINCIPAL={principalID}");
+
+            if (!CheckReturn(ret))
+                return null;
+
+            return BuildFolder((Dictionary<string, object>)ret["folder"]);
         }
 
         public InventoryFolderBase GetRootFolder(UUID principalID)
@@ -667,8 +686,514 @@ namespace OpenSim.Services.Connectors
             return false;
         }
 
+        public async Task<List<InventoryFolderBase>> GetInventorySkeletonAsync(UUID principalID)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                $"METHOD=GETINVENTORYSKELETON&PRINCIPAL={principalID}");
+
+            if (!CheckReturn(ret))
+                return null;
+
+            Dictionary<string, object> folders = (Dictionary<string, object>)ret["FOLDERS"];
+
+            List<InventoryFolderBase> fldrs = new();
+
+            try
+            {
+                foreach (Object o in folders.Values)
+                    fldrs.Add(BuildFolder((Dictionary<string, object>)o));
+            }
+            catch (Exception e)
+            {
+                m_log.Error("[XINVENTORY SERVICES CONNECTOR]: Exception unwrapping folder list: " + e.Message);
+            }
+
+            return fldrs;
+        }
+
+        public async Task<InventoryFolderBase> GetFolderForTypeAsync(UUID principalID, FolderType type)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                $"METHOD=GETFOLDERFORTYPE&PRINCIPAL={principalID}&TYPE={(int)type}");
+
+            if (!CheckReturn(ret))
+                return null;
+
+            return BuildFolder((Dictionary<string, object>)ret["folder"]);
+        }
+
+        public async Task<InventoryCollection> GetFolderContentAsync(UUID principalID, UUID folderID)
+        {
+            InventoryCollection inventory = new()
+            {
+                Folders = new(),
+                Items = new(),
+                OwnerID = principalID
+            };
+
+            try
+            {
+                Dictionary<string,object> ret = await MakeRequestAsync(
+                    $"METHOD=GETFOLDERCONTENT&PRINCIPAL={principalID}&FOLDER={folderID}");
+
+                if (!CheckReturn(ret))
+                    return null;
+
+                if(ret.TryGetValue("FOLDERS", out object ofolders))
+                {
+                    var folders = (Dictionary<string, object>)ofolders;
+                    foreach (object o in folders.Values)
+                        inventory.Folders.Add(BuildFolder((Dictionary<string, object>)o));
+                }
+                if(ret.TryGetValue("ITEMS", out object oitems))
+                {
+                    var items = (Dictionary<string, object>)oitems;
+                    foreach (object o in items.Values)
+                        inventory.Items.Add(BuildItem((Dictionary<string, object>)o));
+                }
+            }
+            catch (Exception e)
+            {
+                m_log.WarnFormat("[XINVENTORY SERVICES CONNECTOR]: Exception in GetFolderContentAsync: {0}", e.Message);
+            }
+
+            return inventory;
+        }
+
+        public async Task<InventoryCollection[]> GetMultipleFoldersContentAsync(UUID principalID, UUID[] folderIDs)
+        {
+            InventoryCollection[] inventoryArr = new InventoryCollection[folderIDs.Length];
+
+            try
+            {
+                Dictionary<string, object> resultSet = await MakeRequestAsync(
+                    $"METHOD=GETMULTIPLEFOLDERSCONTENT&PRINCIPAL={principalID}&FOLDERS={string.Join(',', folderIDs)}&COUNT={folderIDs.Length}");
+
+                if (!CheckReturn(resultSet))
+                    return null;
+
+                int i = 0;
+                foreach (UUID u in folderIDs.AsSpan())
+                {
+                    if(resultSet.TryGetValue($"F_{u}", out object oret) && oret is Dictionary<string, object> ret)
+                    {
+                        UUID inventoryFolderID;
+                        if (ret.TryGetValue("FID", out object retFID))
+                        {
+                            if (!UUID.TryParse((string)retFID, out inventoryFolderID))
+                            {
+                                m_log.WarnFormat("[XINVENTORY SERVICES CONNECTOR]: Could not parse folder id {0}", retFID.ToString());
+                                inventoryArr[i] = null;
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            inventoryArr[i] = null;
+                            m_log.WarnFormat("[XINVENTORY SERVICES CONNECTOR]: FID key not present in response");
+                            continue;
+                        }
+
+                        if (!ret.TryGetValue("OWNER", out object retOwner) || 
+                            !UUID.TryParse((string)retOwner, out UUID inventoryOwnerID))
+                        {
+                            inventoryArr[i] = null;
+                            m_log.Warn($"[XINVENTORY SERVICES CONNECTOR]: Could not parse folder {retFID} owner id");
+                            continue;
+                        }
+
+                        InventoryCollection inventory = new()
+                        {
+                            FolderID = inventoryFolderID,
+                            OwnerID = inventoryOwnerID,
+                            Folders = new List<InventoryFolderBase>(),
+                            Items = new List<InventoryItemBase>()
+                        };
+
+                        if (!ret.TryGetValue("VERSION", out object retVer) ||
+                                !Int32.TryParse((string)retVer, out inventory.Version))
+                            inventory.Version = -1;
+
+                        if (ret.TryGetValue("FOLDERS", out object ofolders) && ofolders is Dictionary<string, object> folders)
+                        {
+                            foreach (object o in folders.Values)
+                            {
+                                inventory.Folders.Add(BuildFolder((Dictionary<string, object>)o));
+                            }
+                        }
+
+                        if (ret.TryGetValue("ITEMS", out object oitems) && oitems is Dictionary<string, object> items)
+                        {
+                            foreach (object o in items.Values)
+                            {
+                                inventory.Items.Add(BuildItem((Dictionary<string, object>)o));
+                            }
+                        }
+                        inventoryArr[i] = inventory;
+                    }
+                    else
+                    {
+                        inventoryArr[i] = null;
+                    }
+                    i++;
+                }
+            }
+            catch (Exception e)
+            {
+                m_log.WarnFormat("[XINVENTORY SERVICES CONNECTOR]: Exception in GetMultipleFoldersContentAsync: {0}", e.Message);
+            }
+
+            return inventoryArr;
+        }
+
+        public async Task<List<InventoryItemBase>> GetFolderItemsAsync(UUID principalID, UUID folderID)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                $"METHOD=GETFOLDERITEMS&PRINCIPAL={principalID}&FOLDER={folderID}");
+
+            if (!CheckReturn(ret))
+                return null;
+
+            Dictionary<string, object> items = (Dictionary<string, object>)ret["ITEMS"];
+            List<InventoryItemBase> fitems = new(items.Count);
+            foreach (object o in items.Values)
+                fitems.Add(BuildItem((Dictionary<string, object>)o));
+
+            return fitems;
+        }
+
+        public async Task<bool> AddFolderAsync(InventoryFolderBase folder)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                    new Dictionary<string,object> {
+                        { "METHOD", "ADDFOLDER"},
+                        { "ParentID", folder.ParentID.ToString() },
+                        { "Type", folder.Type.ToString() },
+                        { "Version", folder.Version.ToString() },
+                        { "Name", folder.Name.ToString() },
+                        { "Owner", folder.Owner.ToString() },
+                        { "ID", folder.ID.ToString() }
+                    });
+
+            return CheckReturn(ret);
+        }
+
+        public async Task<bool> UpdateFolderAsync(InventoryFolderBase folder)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                $"METHOD=UPDATEFOLDER&ParentID={folder.ParentID}&Type={folder.Type}&Version={folder.Version}&Name={folder.Name}&Owner={folder.Owner}&ID={folder.ID}");
+
+            return CheckReturn(ret);
+        }
+
+        public async Task<bool> MoveFolderAsync(InventoryFolderBase folder)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                $"METHOD=MOVEFOLDER&ParentID={folder.ParentID}&ID={folder.ID}&PRINCIPAL={folder.Owner}");
+            return CheckReturn(ret);
+        }
+
+        public async Task<bool> DeleteFoldersAsync(UUID principalID, List<UUID> folderIDs)
+        {
+            List<string> slist = new();
+
+            foreach (UUID f in folderIDs)
+                slist.Add(f.ToString());
+
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                    new Dictionary<string,object> {
+                        { "METHOD", "DELETEFOLDERS"},
+                        { "PRINCIPAL", principalID.ToString() },
+                        { "FOLDERS", slist }
+                    });
+
+            return CheckReturn(ret);
+        }
+
+        public async Task<bool> PurgeFolderAsync(InventoryFolderBase folder)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                $"METHOD=PURGEFOLDER&ID={folder.ID}");
+            return CheckReturn(ret);
+        }
+
+        public async Task<bool> AddItemAsync(InventoryItemBase item)
+        {
+            item.Description ??= string.Empty;
+            item.CreatorData ??= string.Empty;
+            item.CreatorId ??= string.Empty;
+            Dictionary<string, object> ret = await MakeRequestAsync(
+                    new Dictionary<string,object> {
+                        { "METHOD", "ADDITEM"},
+                        { "AssetID", item.AssetID.ToString() },
+                        { "AssetType", item.AssetType.ToString() },
+                        { "Name", item.Name.ToString() },
+                        { "Owner", item.Owner.ToString() },
+                        { "ID", item.ID.ToString() },
+                        { "InvType", item.InvType.ToString() },
+                        { "Folder", item.Folder.ToString() },
+                        { "CreatorId", item.CreatorId.ToString() },
+                        { "CreatorData", item.CreatorData.ToString() },
+                        { "Description", item.Description.ToString() },
+                        { "NextPermissions", item.NextPermissions.ToString() },
+                        { "CurrentPermissions", item.CurrentPermissions.ToString() },
+                        { "BasePermissions", item.BasePermissions.ToString() },
+                        { "EveryOnePermissions", item.EveryOnePermissions.ToString() },
+                        { "GroupPermissions", item.GroupPermissions.ToString() },
+                        { "GroupID", item.GroupID.ToString() },
+                        { "GroupOwned", item.GroupOwned.ToString() },
+                        { "SalePrice", item.SalePrice.ToString() },
+                        { "SaleType", item.SaleType.ToString() },
+                        { "Flags", item.Flags.ToString() },
+                        { "CreationDate", item.CreationDate.ToString() }
+                    });
+
+            return CheckReturn(ret);
+        }
+
+        public async Task<bool> UpdateItemAsync(InventoryItemBase item)
+        {
+            item.CreatorData ??= string.Empty;
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                    new Dictionary<string,object> {
+                        { "METHOD", "UPDATEITEM"},
+                        { "AssetID", item.AssetID.ToString() },
+                        { "AssetType", item.AssetType.ToString() },
+                        { "Name", item.Name },
+                        { "Owner", item.Owner.ToString() },
+                        { "ID", item.ID.ToString() },
+                        { "InvType", item.InvType.ToString() },
+                        { "Folder", item.Folder.ToString() },
+                        { "CreatorId", item.CreatorId },
+                        { "CreatorData", item.CreatorData },
+                        { "Description", item.Description },
+                        { "NextPermissions", item.NextPermissions.ToString() },
+                        { "CurrentPermissions", item.CurrentPermissions.ToString() },
+                        { "BasePermissions", item.BasePermissions.ToString() },
+                        { "EveryOnePermissions", item.EveryOnePermissions.ToString() },
+                        { "GroupPermissions", item.GroupPermissions.ToString() },
+                        { "GroupID", item.GroupID.ToString() },
+                        { "GroupOwned", item.GroupOwned.ToString() },
+                        { "SalePrice", item.SalePrice.ToString() },
+                        { "SaleType", item.SaleType.ToString() },
+                        { "Flags", item.Flags.ToString() },
+                        { "CreationDate", item.CreationDate.ToString() }
+                    });
+
+            bool result = CheckReturn(ret);
+            if (result)
+            {
+                m_ItemCache.AddOrUpdate(item.ID, item, CACHE_EXPIRATION_SECONDS);
+            }
+
+            return result;
+        }
+
+        public async Task<bool> MoveItemsAsync(UUID principalID, List<InventoryItemBase> items)
+        {
+            List<string> idlist = new();
+            List<string> destlist = new();
+
+            foreach (InventoryItemBase item in items)
+            {
+                idlist.Add(item.ID.ToString());
+                m_ItemCache.Remove(item.ID);
+                destlist.Add(item.Folder.ToString());
+            }
+
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                    new Dictionary<string,object> {
+                        { "METHOD", "MOVEITEMS"},
+                        { "PRINCIPAL", principalID.ToString() },
+                        { "IDLIST", idlist },
+                        { "DESTLIST", destlist }
+                    });
+
+            return CheckReturn(ret);
+        }
+
+        public async Task<bool> DeleteItemsAsync(UUID principalID, List<UUID> itemIDs)
+        {
+            List<string> slist = new();
+
+            foreach (UUID f in itemIDs)
+            {
+                slist.Add(f.ToString());
+                m_ItemCache.Remove(f);
+            }
+
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                new Dictionary<string,object> {
+                    { "METHOD", "DELETEITEMS"},
+                    { "PRINCIPAL", principalID.ToString() },
+                    { "ITEMS", slist }
+                });
+
+            return CheckReturn(ret);
+        }
+
+        public async Task<InventoryItemBase> GetItemAsync(UUID principalID, UUID itemID)
+        {
+            if (m_ItemCache.TryGetValue(itemID, out InventoryItemBase retrieved))
+                return retrieved;
+
+            try
+            {
+                Dictionary<string, object> ret = await MakeRequestAsync($"METHOD=GETITEM&ID={itemID}&PRINCIPAL={principalID}");
+                if (!CheckReturn(ret))
+                    return null;
+
+                retrieved = BuildItem((Dictionary<string, object>)ret["item"]);
+            }
+            catch (Exception e)
+            {
+                m_log.Error("[XINVENTORY SERVICES CONNECTOR]: Exception in GetItemAsync: " + e.Message);
+            }
+
+            m_ItemCache.AddOrUpdate(itemID, retrieved, CACHE_EXPIRATION_SECONDS);
+
+            return retrieved;
+        }
+
+        public async Task<InventoryItemBase[]> GetMultipleItemsAsync(UUID principalID, UUID[] itemIDs)
+        {
+            InventoryItemBase[] itemArr = new InventoryItemBase[itemIDs.Length];
+
+            InventoryItemBase item;
+            int i = 0;
+            int pending = 0;
+
+            StringBuilder sb = new(4096);
+            sb.Append($"METHOD=GETMULTIPLEITEMS&PRINCIPAL={principalID}&ITEMS=");
+            foreach (UUID id in itemIDs.AsSpan())
+            {
+                if (m_ItemCache.TryGetValue(id, out item))
+                    itemArr[i++] = item;
+                else
+                {
+                    sb.Append(id.ToString());
+                    sb.Append(',');
+                    pending++;
+                }
+            }
+            if(pending == 0)
+            {
+                return itemArr;
+            }
+
+            sb.Remove(sb.Length - 1, 1);
+            sb.Append($"&COUNT={pending}");
+
+            try
+            {
+                Dictionary<string, object> resultSet = await MakeRequestAsync(sb.ToString());
+
+                if (!CheckReturn(resultSet))
+                {
+                    return i == 0 ? null : itemArr;
+                }
+
+                foreach (KeyValuePair<string, object> kvp in resultSet)
+                {
+                    if (kvp.Key.StartsWith("item_"))
+                    {
+                        if (kvp.Value is Dictionary<string, object> dic)
+                        {
+                            item = BuildItem(dic);
+                            m_ItemCache.AddOrUpdate(item.ID, item, CACHE_EXPIRATION_SECONDS);
+                            itemArr[i++] = item;
+                        }
+                        else
+                            itemArr[i++] = null;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                m_log.WarnFormat("[XINVENTORY SERVICES CONNECTOR]: Exception in GetMultipleItemsAsync: {0}", e.Message);
+            }
+
+            return itemArr;
+        }
+
+        public async Task<InventoryFolderBase> GetFolderAsync(UUID principalID, UUID folderID)
+        {
+            try
+            {
+                Dictionary<string, object> ret = await MakeRequestAsync(
+                    $"METHOD=GETFOLDER&ID={folderID}&PRINCIPAL={principalID}");
+
+                if (!CheckReturn(ret))
+                    return null;
+
+                return BuildFolder((Dictionary<string, object>)ret["folder"]);
+            }
+            catch (Exception e)
+            {
+                m_log.Error("[XINVENTORY SERVICES CONNECTOR]: Exception in GetFolderAsync: " + e.Message);
+            }
+
+            return null;
+        }
+
+        public async Task<List<InventoryItemBase>> GetActiveGesturesAsync(UUID principalID)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                $"METHOD=GETACTIVEGESTURES&PRINCIPAL={principalID}");
+
+            if (!CheckReturn(ret))
+                return null;
+
+            if (ret["ITEMS"] is not Dictionary<string,object> itemsDict)
+                    return null;
+
+            List<InventoryItemBase> items = new(itemsDict.Count);
+
+            foreach (object o in itemsDict.Values)
+                items.Add(BuildItem((Dictionary<string, object>)o));
+
+            return items;
+        }
+
+        public async Task<int> GetAssetPermissionsAsync(UUID principalID, UUID assetID)
+        {
+            Dictionary<string,object> ret = await MakeRequestAsync(
+                $"METHOD=GETASSETPERMISSIONS&PRINCIPAL={principalID}&ASSET={assetID}");
+
+            if (ret is null)
+                return 0;
+
+            if (ret.TryGetValue("RESULT", out object retRes))
+            {
+                if (retRes is string res)
+                {
+                    if (int.TryParse (res, out int intResult))
+                        return intResult;
+                }
+            }
+
+            return 0;
+        }
+
+        public async Task<bool> HasInventoryForUserAsync(UUID principalID)
+        {
+            return false;
+        }
+
         // Helpers
         //
+        private async Task<Dictionary<string, object>> MakeRequestAsync(Dictionary<string, object> sendData)
+        {
+            RequestsMade++;
+            return await MakePostDicRequestAsync(ServerUtils.BuildQueryString(sendData));
+        }
+
+        private async Task<Dictionary<string, object>> MakeRequestAsync(string query)
+        {
+            RequestsMade++;
+            return await MakePostDicRequestAsync(query);
+        }
+
         private Dictionary<string, object> MakeRequest(Dictionary<string, object> sendData)
         {
             RequestsMade++;
@@ -745,6 +1270,67 @@ namespace OpenSim.Services.Connectors
             }
             return new InventoryItemBase();
         }
+        public async Task<Dictionary<string, object>> MakePostDicRequestAsync(string obj)
+        {
+            if (WebUtil.DebugLevel >= 3)
+                m_log.Debug($"[XInventory]: HTTP OUT SynchronousRestForms POST to {m_InventoryURL}");
+            if (string.IsNullOrEmpty(obj))
+            {
+                m_log.Warn($"[XInventory]: empty post data");
+                return new Dictionary<string, object>();
+            }
+
+            Dictionary<string, object> respDic = null;
+            int ticks = Util.EnvironmentTickCount();
+            int sendlen = 0;
+            int rcvlen = 0;
+
+            using var client = WebUtil.GetNewGlobalHttpClient(m_requestTimeout);
+            using var request = new HttpRequestMessage(HttpMethod.Post, m_InventoryURL);
+
+            m_Auth?.AddAuthorization(request.Headers);
+
+            request.Headers.TryAddWithoutValidation("Keep-Alive", "timeout=30, max=10");
+            request.Headers.TryAddWithoutValidation("Connection", "Keep-Alive");
+            request.Headers.ConnectionClose = false;
+
+            request.Headers.ExpectContinue = false;
+            request.Headers.TransferEncodingChunked = false;
+
+            byte[] data = Util.UTF8NBGetbytes(obj);
+            sendlen = data.Length;
+
+            request.Content = new ByteArrayContent(data);
+            request.Content.Headers.TryAddWithoutValidation("Content-Type", "application/x-www-form-urlencoded");
+            request.Content.Headers.TryAddWithoutValidation("Content-Length", sendlen.ToString());
+
+            try
+            {
+                using var responseMessage = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                responseMessage.EnsureSuccessStatusCode();
+
+                if ((responseMessage.Content.Headers.ContentLength is long contentLength) && contentLength != 0)
+                {
+                    rcvlen = (int)contentLength;
+                    using var stream = await responseMessage.Content.ReadAsStreamAsync();
+                    respDic = ServerUtils.ParseXmlResponse(stream);
+                }
+            }
+            catch (Exception e)
+            {
+                m_log.Info($"[XInventory]: Error receiving response from {m_InventoryURL}: {e.Message}");
+                throw;
+            }
+
+            ticks = Util.EnvironmentTickCountSubtract(ticks);
+            if (ticks > WebUtil.LongCallTime)
+            {
+                m_log.Info($"[XInventory]: POST {m_InventoryURL} took {ticks}ms {sendlen}/{rcvlen}bytes");
+            }
+
+            return respDic ?? new Dictionary<string, object>();
+        }
+
         public Dictionary<string, object> MakePostDicRequest(string obj)
         {
             if (WebUtil.DebugLevel >= 3)

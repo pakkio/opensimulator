@@ -27,6 +27,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using OpenMetaverse;
 using log4net;
 using Nini.Config;
@@ -38,6 +40,7 @@ using OpenSim.Framework;
 
 namespace OpenSim.Services.InventoryService
 {
+    using System.Threading.Tasks;
     public class XInventoryService : ServiceBase, IInventoryService
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
@@ -208,6 +211,23 @@ namespace OpenSim.Services.InventoryService
             return sysFolders;
         }
 
+        public virtual async Task<List<InventoryFolderBase>> GetInventorySkeletonAsync(UUID principalID)
+        {
+            XInventoryFolder[] allFolders = await m_Database.GetFoldersAsync(
+                    ["agentID"],
+                    [principalID.ToString()]);
+
+            if (allFolders.Length == 0)
+                return null;
+
+            List<InventoryFolderBase> folders = [];
+
+            foreach (XInventoryFolder x in allFolders)
+                folders.Add(ConvertToOpenSim(x));
+
+            return folders;
+        }
+
         public virtual List<InventoryFolderBase> GetInventorySkeleton(UUID principalID)
         {
             XInventoryFolder[] allFolders = m_Database.GetFolders(
@@ -294,6 +314,48 @@ namespace OpenSim.Services.InventoryService
             return ConvertToOpenSim(folders[0]);
         }
 
+        public virtual async Task<InventoryCollection> GetFolderContentAsync(UUID principalID, UUID folderID)
+        {
+            InventoryCollection inventory = new()
+            {
+                OwnerID = principalID,
+                Folders = [],
+                Items = []
+            };
+
+            XInventoryFolder[] folders = await m_Database.GetFoldersAsync(
+                    ["parentFolderID"],
+                    [folderID.ToString()]);
+
+            foreach (XInventoryFolder x in folders)
+                inventory.Folders.Add(ConvertToOpenSim(x));
+
+            XInventoryItem[] items = await m_Database.GetItemsAsync(
+                    ["parentFolderID"],
+                    [folderID.ToString()]);
+
+            foreach (XInventoryItem i in items)
+                inventory.Items.Add(ConvertToOpenSim(i));
+
+            InventoryFolderBase f = await GetFolderAsync(principalID, folderID);
+            if (f != null)
+            {
+                inventory.Version = f.Version;
+                inventory.OwnerID = f.Owner;
+            }
+            inventory.FolderID = folderID;
+
+            return inventory;
+        }
+
+        public virtual async Task<InventoryCollection[]> GetMultipleFoldersContentAsync(UUID principalID, UUID[] folderIDs)
+        {
+            InventoryCollection[] multiple = new InventoryCollection[folderIDs.Length];
+            var tasks = folderIDs.Select(fid => GetFolderContentAsync(principalID, fid)).ToArray();
+            multiple = await Task.WhenAll(tasks);
+            return multiple;
+        }
+
         public virtual InventoryCollection GetFolderContent(UUID principalID, UUID folderID)
         {
             // This method doesn't receive a valud principal id from the
@@ -337,6 +399,18 @@ namespace OpenSim.Services.InventoryService
             inventory.FolderID = folderID;
 
             return inventory;
+        }
+
+        public virtual async Task<InventoryFolderBase> GetFolderAsync(UUID principalID, UUID folderID)
+        {
+            XInventoryFolder[] folders = await m_Database.GetFoldersAsync(
+                    ["folderID"],
+                    [folderID.ToString()]);
+
+            if (folders.Length == 0)
+                return null;
+
+            return ConvertToOpenSim(folders[0]);
         }
 
         public virtual InventoryCollection[] GetMultipleFoldersContent(UUID principalID, UUID[] folderIDs)
@@ -445,6 +519,11 @@ namespace OpenSim.Services.InventoryService
             return m_Database.StoreFolder(xFolder);
         }
 
+        public virtual async Task<bool> MoveFolderAsync(InventoryFolderBase folder)
+        {
+            return await m_Database.MoveFolderAsync(folder.ID.ToString(), folder.ParentID.ToString());
+        }
+
         public virtual bool MoveFolder(InventoryFolderBase folder)
         {
             return m_Database.MoveFolder(folder.ID.ToString(), folder.ParentID.ToString());
@@ -474,6 +553,27 @@ namespace OpenSim.Services.InventoryService
                 PurgeFolder(f, onlyIfTrash);
                 m_Database.DeleteFolders("folderID", id.ToString());
             }
+
+            return true;
+        }
+
+        public virtual async Task<bool> PurgeFolderAsync(InventoryFolderBase folder)
+        {
+            if (!m_AllowDelete)
+                return false;
+
+            if (folder == null)
+                return false;
+
+            XInventoryFolder[] subFolders = await m_Database.GetFoldersAsync(["parentFolderID"], [folder.ID.ToString()]);
+
+            foreach (XInventoryFolder x in subFolders)
+            {
+                await PurgeFolderAsync(ConvertToOpenSim(x));
+                await m_Database.DeleteFoldersAsync("folderID", x.folderID.ToString());
+            }
+
+            await m_Database.DeleteItemsAsync("parentFolderID", folder.ID.ToString());
 
             return true;
         }
@@ -640,6 +740,21 @@ namespace OpenSim.Services.InventoryService
             return ConvertToOpenSim(folders[0]);
         }
 
+        public virtual async Task<List<InventoryItemBase>> GetActiveGesturesAsync(UUID principalID)
+        {
+            XInventoryItem[] items = await m_Database.GetActiveGesturesAsync(principalID);
+
+            if (items.Length == 0)
+                return new List<InventoryItemBase>();
+
+            List<InventoryItemBase> ret = new();
+
+            foreach (XInventoryItem x in items)
+                ret.Add(ConvertToOpenSim(x));
+
+            return ret;
+        }
+
         public virtual List<InventoryItemBase> GetActiveGestures(UUID principalID)
         {
             XInventoryItem[] items = m_Database.GetActiveGestures(principalID);
@@ -655,9 +770,443 @@ namespace OpenSim.Services.InventoryService
             return ret;
         }
 
+        public virtual async Task<int> GetAssetPermissionsAsync(UUID principalID, UUID assetID)
+        {
+            return await m_Database.GetAssetPermissionsAsync(principalID, assetID);
+        }
+
         public virtual int GetAssetPermissions(UUID principalID, UUID assetID)
         {
             return m_Database.GetAssetPermissions(principalID, assetID);
+        }
+
+        public virtual async Task<bool> CreateUserInventoryAsync(UUID principalID)
+        {
+            bool result = false;
+
+            InventoryFolderBase rootFolder = await GetRootFolderAsync(principalID);
+
+            if (rootFolder == null)
+            {
+                rootFolder = ConvertToOpenSim(await CreateFolderAsync(principalID, UUID.Zero, (int)FolderType.Root, InventoryFolderBase.ROOT_FOLDER_NAME));
+                result = true;
+            }
+
+            XInventoryFolder[] sysFolders = await GetSystemFoldersAsync(principalID, rootFolder.ID);
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Animation))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Animation, "Animations");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.BodyPart))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.BodyPart, "Body Parts");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.CallingCard))
+            {
+                XInventoryFolder folder = await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.CallingCard, "Calling Cards");
+                folder = await CreateFolderAsync(principalID, folder.folderID, (int)FolderType.CallingCard, "Friends");
+                await CreateFolderAsync(principalID, folder.folderID, (int)FolderType.CallingCard, "All");
+            }
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Clothing))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Clothing, "Clothing");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.CurrentOutfit))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.CurrentOutfit, "Current Outfit");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Favorites))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Favorites, "Favorites");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Gesture))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Gesture, "Gestures");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Landmark))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Landmark, "Landmarks");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.LostAndFound))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.LostAndFound, "Lost And Found");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Notecard))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Notecard, "Notecards");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Object))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Object, "Objects");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Snapshot))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Snapshot, "Photo Album");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.LSLText))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.LSLText, "Scripts");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Sound))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Sound, "Sounds");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Texture))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Texture, "Textures");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Trash))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Trash, "Trash");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Settings))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Settings, "Settings");
+
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Material))
+                await CreateFolderAsync(principalID, rootFolder.ID, (int)FolderType.Material, "Materials");
+
+            return result;
+        }
+
+        protected async Task<XInventoryFolder> CreateFolderAsync(UUID principalID, UUID parentID, int type, string name)
+        {
+            var newFolder = new XInventoryFolder
+            {
+                folderName = name,
+                type = type,
+                version = 1,
+                folderID = UUID.Random(),
+                agentID = principalID,
+                parentFolderID = parentID
+            };
+
+            await m_Database.StoreFolderAsync(newFolder);
+
+            return newFolder;
+        }
+
+        protected virtual async Task<XInventoryFolder[]> GetSystemFoldersAsync(UUID principalID, UUID rootID)
+        {
+            XInventoryFolder[] allFolders = await m_Database.GetFoldersAsync(
+                    [ "agentID", "parentFolderID" ],
+                    [ principalID.ToString(), rootID.ToString() ]);
+
+            XInventoryFolder[] sysFolders = Array.FindAll(allFolders, f => f.type > 0);
+
+            return sysFolders;
+        }
+
+        public virtual async Task<InventoryFolderBase> GetRootFolderAsync(UUID principalID)
+        {
+            XInventoryFolder[] folders = await m_Database.GetFoldersAsync(
+                    [ "agentID", "parentFolderID" ],
+                    [ principalID.ToString(), UUID.Zero.ToString() ]);
+
+            if (folders.Length == 0)
+                return null;
+
+            XInventoryFolder root = null;
+            foreach (XInventoryFolder folder in folders)
+            {
+                if (folder.folderName == InventoryFolderBase.ROOT_FOLDER_NAME)
+                {
+                    root = folder;
+                    break;
+                }
+            }
+
+            root ??= folders[0]; //oops
+
+            return ConvertToOpenSim(root);
+        }
+
+        public virtual async Task<InventoryFolderBase> GetFolderForTypeAsync(UUID principalID, FolderType type)
+        {
+            InventoryFolderBase rootFolder = await GetRootFolderAsync(principalID);
+
+            if (rootFolder == null)
+            {
+                m_log.WarnFormat(
+                    "[XINVENTORY]: Found no root folder for {0} in GetFolderForTypeAsync() when looking for {1}",
+                    principalID, type);
+
+                return null;
+            }
+
+            return await GetSystemFolderForTypeAsync(rootFolder, type);
+        }
+
+        private async Task<InventoryFolderBase> GetSystemFolderForTypeAsync(InventoryFolderBase rootFolder, FolderType type)
+        {
+            if (type == FolderType.Root)
+                return rootFolder;
+
+            XInventoryFolder[] folders = await m_Database.GetFoldersAsync(
+                    ["agentID", "parentFolderID", "type"],
+                    [rootFolder.Owner.ToString(), rootFolder.ID.ToString(), ((int)type).ToString()]);
+
+            if (folders.Length == 0)
+            {
+                return null;
+            }
+
+            return ConvertToOpenSim(folders[0]);
+        }
+
+        public virtual async Task<List<InventoryItemBase>> GetFolderItemsAsync(UUID principalID, UUID folderID)
+        {
+            List<InventoryItemBase> invItems = new();
+
+            XInventoryItem[] items = await m_Database.GetItemsAsync(
+                    ["parentFolderID"],
+                    [folderID.ToString()]);
+
+            foreach (XInventoryItem i in items)
+                invItems.Add(ConvertToOpenSim(i));
+
+            return invItems;
+        }
+
+        public virtual async Task<bool> AddFolderAsync(InventoryFolderBase folder)
+        {
+            InventoryFolderBase check = await GetFolderAsync(folder.Owner, folder.ID);
+            if (check != null)
+                return false;
+
+            if (folder.Type != (short)FolderType.None)
+            {
+                InventoryFolderBase rootFolder = await GetRootFolderAsync(folder.Owner);
+
+                if (rootFolder == null)
+                {
+                    m_log.WarnFormat(
+                        "[XINVENTORY]: Found no root folder for {0} in AddFolderAsync() when looking for {1}",
+                        folder.Owner, folder.Type);
+
+                    return false;
+                }
+
+                if (folder.ParentID == rootFolder.ID)
+                {
+                    InventoryFolderBase existingSystemFolder = await GetSystemFolderForTypeAsync(rootFolder, (FolderType)folder.Type);
+
+                    if (existingSystemFolder != null)
+                    {
+                        m_log.WarnFormat(
+                            "[XINVENTORY]: System folder of type {0} already exists when tried to add {1} to {2} for {3}",
+                            folder.Type, folder.Name, folder.ParentID, folder.Owner);
+
+                        return false;
+                    }
+                }
+            }
+
+            XInventoryFolder xFolder = ConvertFromOpenSim(folder);
+            return await m_Database.StoreFolderAsync(xFolder);
+        }
+
+        public virtual async Task<bool> UpdateFolderAsync(InventoryFolderBase folder)
+        {
+            XInventoryFolder xFolder = ConvertFromOpenSim(folder);
+            InventoryFolderBase check = await GetFolderAsync(folder.Owner, folder.ID);
+
+            if (check == null)
+                return await AddFolderAsync(folder);
+
+            if ((check.Type != (short)FolderType.None || xFolder.type != (short)FolderType.None)
+                && (check.Type != (short)FolderType.Outfit || xFolder.type != (short)FolderType.Outfit))
+            {
+                if (xFolder.version < check.Version)
+                {
+                    return false;
+                }
+
+                check.Version = (ushort)xFolder.version;
+                xFolder = ConvertFromOpenSim(check);
+
+                return await m_Database.StoreFolderAsync(xFolder);
+            }
+
+            if (xFolder.version < check.Version)
+                xFolder.version = check.Version;
+
+            xFolder.folderID = check.ID;
+
+            return await m_Database.StoreFolderAsync(xFolder);
+        }
+
+        public virtual async Task<bool> DeleteFoldersAsync(UUID principalID, List<UUID> folderIDs)
+        {
+            return await DeleteFoldersAsync(principalID, folderIDs, true);
+        }
+
+        public virtual async Task<bool> DeleteFoldersAsync(UUID principalID, List<UUID> folderIDs, bool onlyIfTrash)
+        {
+            if (!m_AllowDelete)
+                return false;
+
+            foreach (UUID id in folderIDs)
+            {
+                if (onlyIfTrash && !await ParentIsTrashOrLostAsync(id))
+                    continue;
+                InventoryFolderBase f = new() { ID = id };
+                await PurgeFolderAsync(f);
+                await m_Database.DeleteFoldersAsync("folderID", id.ToString());
+            }
+
+            return true;
+        }
+
+        public virtual async Task<bool> AddItemAsync(InventoryItemBase item)
+        {
+            return await m_Database.StoreItemAsync(ConvertFromOpenSim(item));
+        }
+
+        public virtual async Task<bool> UpdateItemAsync(InventoryItemBase item)
+        {
+            if (!m_AllowDelete)
+                if (item.AssetType == (sbyte)AssetType.Link || item.AssetType == (sbyte)AssetType.LinkFolder)
+                    return false;
+
+            InventoryItemBase retrievedItem = await GetItemAsync(item.Owner, item.ID);
+
+            if (retrievedItem == null)
+            {
+                m_log.WarnFormat(
+                    "[XINVENTORY SERVICE]: Tried to update item {0} {1}, owner {2} but no existing item found.",
+                    item.Name, item.ID, item.Owner);
+
+                return false;
+            }
+
+            if (retrievedItem.InvType != item.InvType
+                || retrievedItem.AssetType != item.AssetType
+                || retrievedItem.Folder != item.Folder
+                || retrievedItem.CreatorIdentification != item.CreatorIdentification
+                || retrievedItem.Owner != item.Owner)
+            {
+                m_log.WarnFormat(
+                    "[XINVENTORY SERVICE]: Caller to UpdateItemAsync() for {0} {1} tried to alter property(s) that should be invariant, (InvType, AssetType, Folder, CreatorIdentification, Owner), existing ({2}, {3}, {4}, {5}, {6}), update ({7}, {8}, {9}, {10}, {11})",
+                    retrievedItem.Name,
+                    retrievedItem.ID,
+                    retrievedItem.InvType,
+                    retrievedItem.AssetType,
+                    retrievedItem.Folder,
+                    retrievedItem.CreatorIdentification,
+                    retrievedItem.Owner,
+                    item.InvType,
+                    item.AssetType,
+                    item.Folder,
+                    item.CreatorIdentification,
+                    item.Owner);
+
+                item.InvType = retrievedItem.InvType;
+                item.AssetType = retrievedItem.AssetType;
+                item.Folder = retrievedItem.Folder;
+                item.CreatorIdentification = retrievedItem.CreatorIdentification;
+                item.Owner = retrievedItem.Owner;
+            }
+
+            return await m_Database.StoreItemAsync(ConvertFromOpenSim(item));
+        }
+
+        public virtual async Task<bool> MoveItemsAsync(UUID principalID, List<InventoryItemBase> items)
+        {
+            foreach (InventoryItemBase i in items)
+            {
+                await m_Database.MoveItemAsync(i.ID.ToString(), i.Folder.ToString());
+            }
+
+            return true;
+        }
+
+        public virtual async Task<bool> DeleteItemsAsync(UUID principalID, List<UUID> itemIDs)
+        {
+            if (!m_AllowDelete)
+            {
+                foreach (UUID id in itemIDs)
+                {
+                    if (!await m_Database.DeleteItemsAsync(
+                        ["inventoryID", "assetType"],
+                        [id.ToString(), ((sbyte)AssetType.Link).ToString()]))
+                    {
+                        await m_Database.DeleteItemsAsync(
+                            ["inventoryID", "assetType"],
+                            [id.ToString(), ((sbyte)AssetType.LinkFolder).ToString()]);
+                    }
+                }
+            }
+            else
+            {
+                foreach (UUID id in itemIDs)
+                    await m_Database.DeleteItemsAsync("inventoryID", id.ToString());
+            }
+
+            return true;
+        }
+
+        public virtual async Task<InventoryItemBase> GetItemAsync(UUID principalID, UUID itemID)
+        {
+            XInventoryItem[] items = await m_Database.GetItemsAsync(["inventoryID"], [itemID.ToString()]);
+
+            if (items.Length == 0)
+                return null;
+
+            return ConvertToOpenSim(items[0]);
+        }
+
+        public virtual async Task<InventoryItemBase[]> GetMultipleItemsAsync(UUID userID, UUID[] ids)
+        {
+            InventoryItemBase[] items = new InventoryItemBase[ids.Length];
+            var tasks = ids.Select(id => GetItemAsync(userID, id)).ToArray();
+            items = await Task.WhenAll(tasks);
+            return items;
+        }
+
+        public virtual async Task<bool> HasInventoryForUserAsync(UUID userID)
+        {
+            return false;
+        }
+
+        private async Task<bool> ParentIsTrashAsync(UUID folderID)
+        {
+            XInventoryFolder[] folder = await m_Database.GetFoldersAsync(["folderID"], [folderID.ToString()]);
+            if (folder.Length < 1)
+                return false;
+
+            if (folder[0].type == (int)FolderType.Trash)
+                return true;
+
+            UUID parentFolder = folder[0].parentFolderID;
+
+            while (!parentFolder.IsZero())
+            {
+                XInventoryFolder[] parent = await m_Database.GetFoldersAsync(["folderID"], [parentFolder.ToString()]);
+                if (parent.Length < 1)
+                    return false;
+
+                if (parent[0].type == (int)FolderType.Trash)
+                    return true;
+                if (parent[0].type == (int)FolderType.Root)
+                    return false;
+
+                parentFolder = parent[0].parentFolderID;
+            }
+            return false;
+        }
+
+        private async Task<bool> ParentIsTrashOrLostAsync(UUID folderID)
+        {
+            XInventoryFolder[] folder = await m_Database.GetFoldersAsync(["folderID"], [folderID.ToString()]);
+            if (folder.Length < 1)
+                return false;
+
+            if (folder[0].type == (int)FolderType.Trash || folder[0].type == (int)FolderType.LostAndFound)
+                return true;
+
+            UUID parentFolder = folder[0].parentFolderID;
+
+            while (parentFolder.IsNotZero())
+            {
+                XInventoryFolder[] parent = await m_Database.GetFoldersAsync(["folderID"], [parentFolder.ToString()]);
+                if (parent.Length < 1)
+                    return false;
+
+                if (parent[0].type == (int)FolderType.Trash || folder[0].type == (int)FolderType.LostAndFound)
+                    return true;
+                if (parent[0].type == (int)FolderType.Root)
+                    return false;
+
+                parentFolder = parent[0].parentFolderID;
+            }
+            return false;
         }
 
         // Unused.

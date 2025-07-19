@@ -27,6 +27,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using OpenMetaverse;
 using OpenSim.Framework;
 
@@ -78,62 +79,34 @@ namespace OpenSim.Data
 
     public interface IXInventoryData
     {
+        // Synchronous methods
         XInventoryFolder[] GetFolder(string field, string val);
         XInventoryFolder[] GetFolders(string[] fields, string[] vals);
         XInventoryItem[] GetItems(string[] fields, string[] vals);
-
         bool StoreFolder(XInventoryFolder folder);
         bool StoreItem(XInventoryItem item);
-
-        /// <summary>
-        /// Delete folders where field == val
-        /// </summary>
-        /// <param name="field"></param>
-        /// <param name="val"></param>
-        /// <returns>true if the delete was successful, false if it was not</returns>
         bool DeleteFolders(string field, string val);
-
-        /// <summary>
-        /// Delete folders where field1 == val1, field2 == val2...
-        /// </summary>
-        /// <param name="fields"></param>
-        /// <param name="vals"></param>
-        /// <returns>true if the delete was successful, false if it was not</returns>
         bool DeleteFolders(string[] fields, string[] vals);
-
-        /// <summary>
-        /// Delete items where field == val
-        /// </summary>
-        /// <param name="field"></param>
-        /// <param name="val"></param>
-        /// <returns>true if the delete was successful, false if it was not</returns>
         bool DeleteItems(string field, string val);
-
-        /// <summary>
-        /// Delete items where field1 == val1, field2 == val2...
-        /// </summary>
-        /// <param name="fields"></param>
-        /// <param name="vals"></param>
-        /// <returns>true if the delete was successful, false if it was not</returns>
         bool DeleteItems(string[] fields, string[] vals);
-
-        /// <summary>
-        /// Move an item to another folder.
-        /// </summary>
-        /// <returns>/returns>
-        /// <param name='id'>UUID of the item</param>
-        /// <param name='newParent'>UUID of the new parent folder.</param>
         bool MoveItem(string id, string newParentFolderID);
-
-        /// <summary>
-        /// Move a folder to another folder.
-        /// </summary>
-        /// <returns>/returns>
-        /// <param name='id'>UUID of the item</param>
-        /// <param name='newParent'>UUID of the new parent folder.</param>
         bool MoveFolder(string id, string newParentFolderID);
-
         XInventoryItem[] GetActiveGestures(UUID principalID);
         int GetAssetPermissions(UUID principalID, UUID assetID);
+
+        // Async methods
+        Task<XInventoryFolder[]> GetFolderAsync(string field, string val);
+        Task<XInventoryFolder[]> GetFoldersAsync(string[] fields, string[] vals);
+        Task<XInventoryItem[]> GetItemsAsync(string[] fields, string[] vals);
+        Task<bool> StoreFolderAsync(XInventoryFolder folder);
+        Task<bool> StoreItemAsync(XInventoryItem item);
+        Task<bool> DeleteFoldersAsync(string field, string val);
+        Task<bool> DeleteFoldersAsync(string[] fields, string[] vals);
+        Task<bool> DeleteItemsAsync(string field, string val);
+        Task<bool> DeleteItemsAsync(string[] fields, string[] vals);
+        Task<bool> MoveItemAsync(string id, string newParentFolderID);
+        Task<bool> MoveFolderAsync(string id, string newParentFolderID);
+        Task<XInventoryItem[]> GetActiveGesturesAsync(UUID principalID);
+        Task<int> GetAssetPermissionsAsync(UUID principalID, UUID assetID);
     }
 }
