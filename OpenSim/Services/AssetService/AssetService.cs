@@ -29,6 +29,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Threading.Tasks;
 using Nini.Config;
 using log4net;
 using OpenSim.Framework;
@@ -209,6 +210,32 @@ namespace OpenSim.Services.AssetService
 
         public void Get(string id, string ForeignAssetService, bool StoreOnLocalGrid, SimpleAssetRetrieved callBack)
         {
+        }
+
+        // High-performance async implementations
+        public virtual async Task<AssetBase> GetAsync(string id)
+        {
+            return await Task.Run(() => Get(id));
+        }
+
+        public virtual async Task<AssetMetadata> GetMetadataAsync(string id)
+        {
+            return await Task.Run(() => GetMetadata(id));
+        }
+
+        public virtual async Task<byte[]> GetDataAsync(string id)
+        {
+            return await Task.Run(() => GetData(id));
+        }
+
+        public virtual async Task<bool[]> AssetsExistAsync(string[] ids)
+        {
+            return await Task.Run(() => AssetsExist(ids));
+        }
+
+        public virtual async Task<string> StoreAsync(AssetBase asset)
+        {
+            return await Task.Run(() => Store(asset));
         }
     }
 }

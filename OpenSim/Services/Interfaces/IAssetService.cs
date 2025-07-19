@@ -26,6 +26,7 @@
  */
 
 using System;
+using System.Threading.Tasks;
 using OpenSim.Framework;
 
 namespace OpenSim.Services.Interfaces
@@ -113,5 +114,13 @@ namespace OpenSim.Services.Interfaces
         /// <param name="id"></param>
         /// <returns></returns>
         bool Delete(string id);
+
+        // Modern async/await methods for high-performance scenarios
+        // Default implementations use Task.Run to wrap sync methods
+        Task<AssetBase> GetAsync(string id) => Task.FromResult(Get(id));
+        Task<AssetMetadata> GetMetadataAsync(string id) => Task.FromResult(GetMetadata(id));
+        Task<byte[]> GetDataAsync(string id) => Task.FromResult(GetData(id));
+        Task<bool[]> AssetsExistAsync(string[] ids) => Task.FromResult(AssetsExist(ids));
+        Task<string> StoreAsync(AssetBase asset) => Task.FromResult(Store(asset));
     }
 }
