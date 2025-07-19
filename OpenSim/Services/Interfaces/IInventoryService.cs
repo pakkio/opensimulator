@@ -228,5 +228,6 @@ namespace OpenSim.Services.Interfaces
         Task<List<InventoryItemBase>> GetActiveGesturesAsync(UUID userId);
         Task<int> GetAssetPermissionsAsync(UUID userID, UUID assetID);
         #endregion
+        #endregion
     }
 }

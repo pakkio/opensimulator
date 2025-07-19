@@ -271,7 +271,7 @@ namespace OpenSim.Services.Connectors
                     return null;
 
                 int i = 0;
-                foreach (UUID u in folderIDs.AsSpan())
+                foreach (UUID u in folderIDs)
                 {
                     if(resultSet.TryGetValue($"F_{u}", out object oret) && oret is Dictionary<string, object> ret)
                     {
@@ -569,7 +569,7 @@ namespace OpenSim.Services.Connectors
 
             StringBuilder sb = new(4096);
             sb.Append($"METHOD=GETMULTIPLEITEMS&PRINCIPAL={principalID}&ITEMS=");
-            foreach (UUID id in itemIDs.AsSpan())
+            foreach (UUID id in itemIDs)
             {
                 if (m_ItemCache.TryGetValue(id, out item))
                     itemArr[i++] = item;
@@ -773,7 +773,7 @@ namespace OpenSim.Services.Connectors
                     return null;
 
                 int i = 0;
-                foreach (UUID u in folderIDs.AsSpan())
+                foreach (UUID u in folderIDs)
                 {
                     if(resultSet.TryGetValue($"F_{u}", out object oret) && oret is Dictionary<string, object> ret)
                     {
@@ -1065,7 +1065,7 @@ namespace OpenSim.Services.Connectors
 
             StringBuilder sb = new(4096);
             sb.Append($"METHOD=GETMULTIPLEITEMS&PRINCIPAL={principalID}&ITEMS=");
-            foreach (UUID id in itemIDs.AsSpan())
+            foreach (UUID id in itemIDs)
             {
                 if (m_ItemCache.TryGetValue(id, out item))
                     itemArr[i++] = item;
