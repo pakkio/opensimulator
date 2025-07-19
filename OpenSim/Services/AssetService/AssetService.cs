@@ -212,10 +212,25 @@ namespace OpenSim.Services.AssetService
         {
         }
 
-        // High-performance async implementations
+        // High-performance async implementations - true database async for major performance gains
         public virtual async Task<AssetBase> GetAsync(string id)
         {
-            return await Task.Run(() => Get(id));
+            UUID assetID;
+            if (!UUID.TryParse(id, out assetID))
+            {
+                m_log.WarnFormat("[ASSET SERVICE]: Could not parse requested asset id {0}", id);
+                return null;
+            }
+
+            try
+            {
+                return await m_Database.GetAssetAsync(assetID);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[ASSET SERVICE]: Exception getting asset {0} {1}", assetID, e);
+                return null;
+            }
         }
 
         public virtual async Task<AssetMetadata> GetMetadataAsync(string id)
@@ -230,7 +245,22 @@ namespace OpenSim.Services.AssetService
 
         public virtual async Task<bool[]> AssetsExistAsync(string[] ids)
         {
-            return await Task.Run(() => AssetsExist(ids));
+            UUID[] assetIDs = new UUID[ids.Length];
+            for (int i = 0; i < ids.Length; i++)
+            {
+                if (!UUID.TryParse(ids[i], out assetIDs[i]))
+                    assetIDs[i] = UUID.Zero;
+            }
+
+            try
+            {
+                return await m_Database.AssetsExistAsync(assetIDs);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[ASSET SERVICE]: Exception checking assets exist: {0}", e);
+                return new bool[ids.Length];
+            }
         }
 
         public virtual async Task<string> StoreAsync(AssetBase asset)

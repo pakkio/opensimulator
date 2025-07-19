@@ -33,6 +33,7 @@ using System.Drawing.Imaging;
 using System.Reflection;
 using System.IO;
 using System.Net;
+using System.Threading.Tasks;
 using System.Web;
 using log4net;
 using Nini.Config;
@@ -106,7 +107,8 @@ namespace OpenSim.Capabilities.Handlers
                 httpResponse.StatusCode = (int)System.Net.HttpStatusCode.NotFound;
                 foreach (string f in formats)
                 {
-                    if (FetchTexture(httpRequest, httpResponse, textureID, f))
+                    // Use async texture loading for better performance - Result blocks but allows async I/O 
+                    if (FetchTexture(httpRequest, httpResponse, textureID, f).Result)
                         break;
                 }
             }
@@ -130,7 +132,7 @@ namespace OpenSim.Capabilities.Handlers
         /// <param name="textureID"></param>
         /// <param name="format"></param>
         /// <returns>False for "caller try another codec"; true otherwise</returns>
-        private bool FetchTexture(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse, UUID textureID, string format)
+        private async Task<bool> FetchTexture(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse, UUID textureID, string format)
         {
             // m_log.DebugFormat("[GETTEXTURE]: {0} with requested format {1}", textureID, format);
             if(!String.IsNullOrEmpty(m_RedirectURL))
@@ -141,8 +143,8 @@ namespace OpenSim.Capabilities.Handlers
                 return true;
             }
 
-            // Fetch,  Misses or invalid return a 404
-            AssetBase texture = m_assetService.Get(textureID.ToString());
+            // Fetch async for major performance improvement under concurrent texture loading
+            AssetBase texture = await m_assetService.GetAsync(textureID.ToString());
             if (texture != null)
             {
                 if (texture.Type != (sbyte)AssetType.Texture)

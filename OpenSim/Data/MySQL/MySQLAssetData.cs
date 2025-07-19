@@ -29,6 +29,7 @@ using System;
 using System.Data;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using log4net;
 using MySql.Data.MySqlClient;
 using OpenMetaverse;
@@ -360,6 +361,81 @@ namespace OpenSim.Data.MySQL
             }
 
             return true;
+        }
+
+        // True async database operations - major performance benefits for concurrent operations
+        public virtual async Task<AssetBase> GetAssetAsync(UUID assetID)
+        {
+            AssetBase asset = null;
+            using (MySqlConnection dbcon = new MySqlConnection(m_connectionString))
+            {
+                await dbcon.OpenAsync();
+                using (MySqlCommand cmd = new MySqlCommand(
+                    "SELECT name, description, assetType, local, temporary, asset_flags, CreatorID, data FROM assets WHERE id=?id",
+                    dbcon))
+                {
+                    cmd.Parameters.AddWithValue("?id", assetID.ToString());
+                    try
+                    {
+                        using (MySqlDataReader dbReader = (MySqlDataReader)await cmd.ExecuteReaderAsync(CommandBehavior.SingleRow))
+                        {
+                            if (await dbReader.ReadAsync())
+                            {
+                                asset = new AssetBase(assetID, (string)dbReader["name"], (sbyte)dbReader["assetType"], dbReader["CreatorID"].ToString());
+                                asset.Data = (byte[])dbReader["data"];
+                                asset.Description = (string)dbReader["description"];
+                                string local = dbReader["local"].ToString();
+                                if (local.Equals("1") || local.Equals("true", StringComparison.InvariantCultureIgnoreCase))
+                                    asset.Local = true;
+                                else
+                                    asset.Local = false;
+                                asset.Temporary = Convert.ToBoolean(dbReader["temporary"]);
+                                asset.Flags = (AssetFlags)Convert.ToInt32(dbReader["asset_flags"]);
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.Error(
+                            string.Format("[ASSETS DB]: MySql failure fetching asset {0}.  Exception  ", assetID), e);
+                    }
+                }
+                dbcon.Close();
+            }
+            return asset;
+        }
+
+        public virtual async Task<bool[]> AssetsExistAsync(UUID[] uuids)
+        {
+            if (uuids.Length == 0)
+                return new bool[0];
+
+            HashSet<UUID> exist = new HashSet<UUID>();
+            string ids = "'" + string.Join("','", uuids) + "'";
+            string sql = string.Format("SELECT id FROM assets WHERE id IN ({0})", ids);
+
+            using (MySqlConnection dbcon = new MySqlConnection(m_connectionString))
+            {
+                await dbcon.OpenAsync();
+                using (MySqlCommand cmd = new MySqlCommand(sql, dbcon))
+                {
+                    using (MySqlDataReader dbReader = (MySqlDataReader)await cmd.ExecuteReaderAsync())
+                    {
+                        while (await dbReader.ReadAsync())
+                        {
+                            UUID id = DBGuid.FromDB(dbReader["id"]);
+                            exist.Add(id);
+                        }
+                    }
+                }
+                dbcon.Close();
+            }
+
+            bool[] results = new bool[uuids.Length];
+            for (int i = 0; i < uuids.Length; i++)
+                results[i] = exist.Contains(uuids[i]);
+
+            return results;
         }
 
         #endregion

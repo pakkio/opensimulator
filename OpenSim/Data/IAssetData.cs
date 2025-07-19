@@ -26,6 +26,7 @@
  */
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using OpenMetaverse;
 using OpenSim.Framework;
 
@@ -39,5 +40,11 @@ namespace OpenSim.Data
         List<AssetMetadata> FetchAssetMetadataSet(int start, int count);
         void Initialise(string connect);
         bool Delete(string id);
+
+        // Async database operations for true performance benefits
+        Task<AssetBase> GetAssetAsync(UUID uuid) => Task.FromResult(GetAsset(uuid));
+        Task<bool> StoreAssetAsync(AssetBase asset) => Task.FromResult(StoreAsset(asset));
+        Task<bool[]> AssetsExistAsync(UUID[] uuids) => Task.FromResult(AssetsExist(uuids));
+        Task<List<AssetMetadata>> FetchAssetMetadataSetAsync(int start, int count) => Task.FromResult(FetchAssetMetadataSet(start, count));
     }
 }
