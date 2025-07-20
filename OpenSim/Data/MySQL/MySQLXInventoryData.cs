@@ -122,6 +122,72 @@ namespace OpenSim.Data.MySQL
             return m_Items.GetAssetPermissions(principalID, assetID);
         }
 
+        // Async methods - wrap synchronous calls
+        public async Task<XInventoryFolder[]> GetFolderAsync(string field, string val)
+        {
+            return await Task.FromResult(GetFolder(field, val));
+        }
+
+        public async Task<XInventoryFolder[]> GetFoldersAsync(string[] fields, string[] vals)
+        {
+            return await Task.FromResult(GetFolders(fields, vals));
+        }
+
+        public async Task<XInventoryItem[]> GetItemsAsync(string[] fields, string[] vals)
+        {
+            return await Task.FromResult(GetItems(fields, vals));
+        }
+
+        public async Task<bool> StoreFolderAsync(XInventoryFolder folder)
+        {
+            return await Task.FromResult(StoreFolder(folder));
+        }
+
+        public async Task<bool> StoreItemAsync(XInventoryItem item)
+        {
+            return await Task.FromResult(StoreItem(item));
+        }
+
+        public async Task<bool> DeleteFoldersAsync(string field, string val)
+        {
+            return await Task.FromResult(DeleteFolders(field, val));
+        }
+
+        public async Task<bool> DeleteFoldersAsync(string[] fields, string[] vals)
+        {
+            return await Task.FromResult(DeleteFolders(fields, vals));
+        }
+
+        public async Task<bool> DeleteItemsAsync(string field, string val)
+        {
+            return await Task.FromResult(DeleteItems(field, val));
+        }
+
+        public async Task<bool> DeleteItemsAsync(string[] fields, string[] vals)
+        {
+            return await Task.FromResult(DeleteItems(fields, vals));
+        }
+
+        public async Task<bool> MoveItemAsync(string id, string newParentFolderID)
+        {
+            return await Task.FromResult(MoveItem(id, newParentFolderID));
+        }
+
+        public async Task<bool> MoveFolderAsync(string id, string newParentFolderID)
+        {
+            return await Task.FromResult(MoveFolder(id, newParentFolderID));
+        }
+
+        public async Task<XInventoryItem[]> GetActiveGesturesAsync(UUID principalID)
+        {
+            return await Task.FromResult(GetActiveGestures(principalID));
+        }
+
+        public async Task<int> GetAssetPermissionsAsync(UUID principalID, UUID assetID)
+        {
+            return await Task.FromResult(GetAssetPermissions(principalID, assetID));
+        }
+
     }
 
     public class MySqlItemHandler : MySqlInventoryHandler<XInventoryItem>

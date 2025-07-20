@@ -32,6 +32,7 @@ using Nini.Config;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading.Tasks;
 using OpenSim.Framework;
 using OpenSim.Framework.Monitoring;
 using OpenSim.Data;
@@ -328,6 +329,118 @@ namespace OpenSim.Region.CoreModules.ServiceConnectorsOut.Inventory
         {
             return m_InventoryService.GetAssetPermissions(userID, assetID);
         }
+
+        // Async methods - delegate to underlying service
+        public async Task<bool> CreateUserInventoryAsync(UUID user)
+        {
+            return await m_InventoryService.CreateUserInventoryAsync(user);
+        }
+
+        public async Task<List<InventoryFolderBase>> GetInventorySkeletonAsync(UUID userId)
+        {
+            return await m_InventoryService.GetInventorySkeletonAsync(userId);
+        }
+
+        public async Task<InventoryFolderBase> GetRootFolderAsync(UUID userID)
+        {
+            return await m_InventoryService.GetRootFolderAsync(userID);
+        }
+
+        public async Task<InventoryFolderBase> GetFolderForTypeAsync(UUID userID, FolderType type)
+        {
+            return await m_InventoryService.GetFolderForTypeAsync(userID, type);
+        }
+
+        public async Task<InventoryCollection> GetFolderContentAsync(UUID userID, UUID folderID)
+        {
+            return await m_InventoryService.GetFolderContentAsync(userID, folderID);
+        }
+
+        public async Task<InventoryCollection[]> GetMultipleFoldersContentAsync(UUID principalID, UUID[] folderIDs)
+        {
+            return await m_InventoryService.GetMultipleFoldersContentAsync(principalID, folderIDs);
+        }
+
+        public async Task<List<InventoryItemBase>> GetFolderItemsAsync(UUID userID, UUID folderID)
+        {
+            return await m_InventoryService.GetFolderItemsAsync(userID, folderID);
+        }
+
+        public async Task<bool> AddFolderAsync(InventoryFolderBase folder)
+        {
+            return await m_InventoryService.AddFolderAsync(folder);
+        }
+
+        public async Task<bool> UpdateFolderAsync(InventoryFolderBase folder)
+        {
+            return await m_InventoryService.UpdateFolderAsync(folder);
+        }
+
+        public async Task<bool> MoveFolderAsync(InventoryFolderBase folder)
+        {
+            return await m_InventoryService.MoveFolderAsync(folder);
+        }
+
+        public async Task<bool> DeleteFoldersAsync(UUID ownerID, List<UUID> folderIDs)
+        {
+            return await m_InventoryService.DeleteFoldersAsync(ownerID, folderIDs);
+        }
+
+        public async Task<bool> PurgeFolderAsync(InventoryFolderBase folder)
+        {
+            return await m_InventoryService.PurgeFolderAsync(folder);
+        }
+
+        public async Task<bool> AddItemAsync(InventoryItemBase item)
+        {
+            return await m_InventoryService.AddItemAsync(item);
+        }
+
+        public async Task<bool> UpdateItemAsync(InventoryItemBase item)
+        {
+            return await m_InventoryService.UpdateItemAsync(item);
+        }
+
+        public async Task<bool> MoveItemsAsync(UUID ownerID, List<InventoryItemBase> items)
+        {
+            return await m_InventoryService.MoveItemsAsync(ownerID, items);
+        }
+
+        public async Task<bool> DeleteItemsAsync(UUID ownerID, List<UUID> itemIDs)
+        {
+            return await m_InventoryService.DeleteItemsAsync(ownerID, itemIDs);
+        }
+
+        public async Task<InventoryItemBase> GetItemAsync(UUID principalID, UUID itemID)
+        {
+            return await m_InventoryService.GetItemAsync(principalID, itemID);
+        }
+
+        public async Task<InventoryItemBase[]> GetMultipleItemsAsync(UUID userID, UUID[] itemIDs)
+        {
+            return await m_InventoryService.GetMultipleItemsAsync(userID, itemIDs);
+        }
+
+        public async Task<InventoryFolderBase> GetFolderAsync(UUID principalID, UUID folderID)
+        {
+            return await m_InventoryService.GetFolderAsync(principalID, folderID);
+        }
+
+        public async Task<bool> HasInventoryForUserAsync(UUID userID)
+        {
+            return await m_InventoryService.HasInventoryForUserAsync(userID);
+        }
+
+        public async Task<List<InventoryItemBase>> GetActiveGesturesAsync(UUID userId)
+        {
+            return await m_InventoryService.GetActiveGesturesAsync(userId);
+        }
+
+        public async Task<int> GetAssetPermissionsAsync(UUID userID, UUID assetID)
+        {
+            return await m_InventoryService.GetAssetPermissionsAsync(userID, assetID);
+        }
+
         #endregion IInventoryService
     }
 }

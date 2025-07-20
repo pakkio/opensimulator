@@ -27,6 +27,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading.Tasks;
 
 using OpenSim.Framework;
 
@@ -266,5 +267,116 @@ namespace OpenSim.Region.CoreModules.Framework.Library
         /// <returns>The permissions or 0 if no such asset is found in
         /// the user's inventory</returns>
         public int GetAssetPermissions(UUID userID, UUID assetID) { return 0; }
+
+        // Async methods - wrap synchronous calls for library inventory
+        public async Task<bool> CreateUserInventoryAsync(UUID user) 
+        { 
+            return await Task.FromResult(CreateUserInventory(user)); 
+        }
+
+        public async Task<List<InventoryFolderBase>> GetInventorySkeletonAsync(UUID userId) 
+        { 
+            return await Task.FromResult(GetInventorySkeleton(userId)); 
+        }
+
+        public async Task<InventoryFolderBase> GetRootFolderAsync(UUID userID) 
+        { 
+            return await Task.FromResult(GetRootFolder(userID)); 
+        }
+
+        public async Task<InventoryFolderBase> GetFolderForTypeAsync(UUID userID, FolderType type) 
+        { 
+            return await Task.FromResult(GetFolderForType(userID, type)); 
+        }
+
+        public async Task<InventoryCollection> GetFolderContentAsync(UUID userID, UUID folderID) 
+        { 
+            return await Task.FromResult(GetFolderContent(userID, folderID)); 
+        }
+
+        public async Task<InventoryCollection[]> GetMultipleFoldersContentAsync(UUID principalID, UUID[] folderIDs) 
+        { 
+            return await Task.FromResult(GetMultipleFoldersContent(principalID, folderIDs)); 
+        }
+
+        public async Task<List<InventoryItemBase>> GetFolderItemsAsync(UUID userID, UUID folderID) 
+        { 
+            return await Task.FromResult(GetFolderItems(userID, folderID)); 
+        }
+
+        public async Task<bool> AddFolderAsync(InventoryFolderBase folder) 
+        { 
+            return await Task.FromResult(AddFolder(folder)); 
+        }
+
+        public async Task<bool> UpdateFolderAsync(InventoryFolderBase folder) 
+        { 
+            return await Task.FromResult(UpdateFolder(folder)); 
+        }
+
+        public async Task<bool> MoveFolderAsync(InventoryFolderBase folder) 
+        { 
+            return await Task.FromResult(MoveFolder(folder)); 
+        }
+
+        public async Task<bool> DeleteFoldersAsync(UUID ownerID, List<UUID> folderIDs) 
+        { 
+            return await Task.FromResult(DeleteFolders(ownerID, folderIDs)); 
+        }
+
+        public async Task<bool> PurgeFolderAsync(InventoryFolderBase folder) 
+        { 
+            return await Task.FromResult(PurgeFolder(folder)); 
+        }
+
+        public async Task<bool> AddItemAsync(InventoryItemBase item) 
+        { 
+            return await Task.FromResult(AddItem(item)); 
+        }
+
+        public async Task<bool> UpdateItemAsync(InventoryItemBase item) 
+        { 
+            return await Task.FromResult(UpdateItem(item)); 
+        }
+
+        public async Task<bool> MoveItemsAsync(UUID ownerID, List<InventoryItemBase> items) 
+        { 
+            return await Task.FromResult(MoveItems(ownerID, items)); 
+        }
+
+        public async Task<bool> DeleteItemsAsync(UUID ownerID, List<UUID> itemIDs) 
+        { 
+            return await Task.FromResult(DeleteItems(ownerID, itemIDs)); 
+        }
+
+        public async Task<InventoryItemBase> GetItemAsync(UUID principalID, UUID itemID) 
+        { 
+            return await Task.FromResult(GetItem(principalID, itemID)); 
+        }
+
+        public async Task<InventoryItemBase[]> GetMultipleItemsAsync(UUID userID, UUID[] itemIDs) 
+        { 
+            return await Task.FromResult(GetMultipleItems(userID, itemIDs)); 
+        }
+
+        public async Task<InventoryFolderBase> GetFolderAsync(UUID principalID, UUID folderID) 
+        { 
+            return await Task.FromResult(GetFolder(principalID, folderID)); 
+        }
+
+        public async Task<bool> HasInventoryForUserAsync(UUID userID) 
+        { 
+            return await Task.FromResult(HasInventoryForUser(userID)); 
+        }
+
+        public async Task<List<InventoryItemBase>> GetActiveGesturesAsync(UUID userId) 
+        { 
+            return await Task.FromResult(GetActiveGestures(userId)); 
+        }
+
+        public async Task<int> GetAssetPermissionsAsync(UUID userID, UUID assetID) 
+        { 
+            return await Task.FromResult(GetAssetPermissions(userID, assetID)); 
+        }
     }
 }

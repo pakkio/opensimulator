@@ -32,6 +32,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Threading.Tasks;
 using OpenSim.Framework;
 
 using OpenSim.Server.Base;
@@ -617,6 +618,306 @@ namespace OpenSim.Region.CoreModules.ServiceConnectorsOut.Inventory
             IInventoryService connector = GetConnector(invURL);
 
             return connector.GetAssetPermissions(userID, assetID);
+        }
+
+        // Async methods - delegate to appropriate connector
+        public async Task<bool> CreateUserInventoryAsync(UUID userID)
+        {
+            string invURL = GetInventoryServiceURL(userID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.CreateUserInventoryAsync(userID);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.CreateUserInventoryAsync(userID);
+        }
+
+        public async Task<List<InventoryFolderBase>> GetInventorySkeletonAsync(UUID userID)
+        {
+            string invURL = GetInventoryServiceURL(userID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.GetInventorySkeletonAsync(userID);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.GetInventorySkeletonAsync(userID);
+        }
+
+        public async Task<InventoryFolderBase> GetRootFolderAsync(UUID userID)
+        {
+            string invURL = GetInventoryServiceURL(userID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.GetRootFolderAsync(userID);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.GetRootFolderAsync(userID);
+        }
+
+        public async Task<InventoryFolderBase> GetFolderForTypeAsync(UUID userID, FolderType type)
+        {
+            string invURL = GetInventoryServiceURL(userID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.GetFolderForTypeAsync(userID, type);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.GetFolderForTypeAsync(userID, type);
+        }
+
+        public async Task<InventoryCollection> GetFolderContentAsync(UUID userID, UUID folderID)
+        {
+            string invURL = GetInventoryServiceURL(userID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.GetFolderContentAsync(userID, folderID);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.GetFolderContentAsync(userID, folderID);
+        }
+
+        public async Task<InventoryCollection[]> GetMultipleFoldersContentAsync(UUID userID, UUID[] folderIDs)
+        {
+            string invURL = GetInventoryServiceURL(userID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.GetMultipleFoldersContentAsync(userID, folderIDs);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.GetMultipleFoldersContentAsync(userID, folderIDs);
+        }
+
+        public async Task<List<InventoryItemBase>> GetFolderItemsAsync(UUID userID, UUID folderID)
+        {
+            string invURL = GetInventoryServiceURL(userID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.GetFolderItemsAsync(userID, folderID);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.GetFolderItemsAsync(userID, folderID);
+        }
+
+        public async Task<bool> AddFolderAsync(InventoryFolderBase folder)
+        {
+            string invURL = GetInventoryServiceURL(folder.Owner);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.AddFolderAsync(folder);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.AddFolderAsync(folder);
+        }
+
+        public async Task<bool> UpdateFolderAsync(InventoryFolderBase folder)
+        {
+            string invURL = GetInventoryServiceURL(folder.Owner);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.UpdateFolderAsync(folder);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.UpdateFolderAsync(folder);
+        }
+
+        public async Task<bool> MoveFolderAsync(InventoryFolderBase folder)
+        {
+            string invURL = GetInventoryServiceURL(folder.Owner);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.MoveFolderAsync(folder);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.MoveFolderAsync(folder);
+        }
+
+        public async Task<bool> DeleteFoldersAsync(UUID ownerID, List<UUID> folderIDs)
+        {
+            string invURL = GetInventoryServiceURL(ownerID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.DeleteFoldersAsync(ownerID, folderIDs);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.DeleteFoldersAsync(ownerID, folderIDs);
+        }
+
+        public async Task<bool> PurgeFolderAsync(InventoryFolderBase folder)
+        {
+            string invURL = GetInventoryServiceURL(folder.Owner);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.PurgeFolderAsync(folder);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.PurgeFolderAsync(folder);
+        }
+
+        public async Task<bool> AddItemAsync(InventoryItemBase item)
+        {
+            string invURL = GetInventoryServiceURL(item.Owner);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.AddItemAsync(item);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.AddItemAsync(item);
+        }
+
+        public async Task<bool> UpdateItemAsync(InventoryItemBase item)
+        {
+            string invURL = GetInventoryServiceURL(item.Owner);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.UpdateItemAsync(item);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.UpdateItemAsync(item);
+        }
+
+        public async Task<bool> MoveItemsAsync(UUID ownerID, List<InventoryItemBase> items)
+        {
+            string invURL = GetInventoryServiceURL(ownerID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.MoveItemsAsync(ownerID, items);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.MoveItemsAsync(ownerID, items);
+        }
+
+        public async Task<bool> DeleteItemsAsync(UUID ownerID, List<UUID> itemIDs)
+        {
+            string invURL = GetInventoryServiceURL(ownerID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.DeleteItemsAsync(ownerID, itemIDs);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.DeleteItemsAsync(ownerID, itemIDs);
+        }
+
+        public async Task<InventoryItemBase> GetItemAsync(UUID principalID, UUID itemID)
+        {
+            string invURL = GetInventoryServiceURL(principalID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.GetItemAsync(principalID, itemID);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.GetItemAsync(principalID, itemID);
+        }
+
+        public async Task<InventoryItemBase[]> GetMultipleItemsAsync(UUID userID, UUID[] itemIDs)
+        {
+            string invURL = GetInventoryServiceURL(userID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.GetMultipleItemsAsync(userID, itemIDs);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.GetMultipleItemsAsync(userID, itemIDs);
+        }
+
+        public async Task<InventoryFolderBase> GetFolderAsync(UUID principalID, UUID folderID)
+        {
+            string invURL = GetInventoryServiceURL(principalID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.GetFolderAsync(principalID, folderID);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.GetFolderAsync(principalID, folderID);
+        }
+
+        public async Task<bool> HasInventoryForUserAsync(UUID userID)
+        {
+            string invURL = GetInventoryServiceURL(userID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.HasInventoryForUserAsync(userID);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.HasInventoryForUserAsync(userID);
+        }
+
+        public async Task<List<InventoryItemBase>> GetActiveGesturesAsync(UUID userId)
+        {
+            return await Task.FromResult(new List<InventoryItemBase>());
+        }
+
+        public async Task<int> GetAssetPermissionsAsync(UUID userID, UUID assetID)
+        {
+            string invURL = GetInventoryServiceURL(userID);
+            if (invURL == null)
+            {
+                IInventoryService localService;
+                lock (m_Lock)
+                    localService = m_LocalGridInventoryService;
+                return await localService.GetAssetPermissionsAsync(userID, assetID);
+            }
+            IInventoryService connector = GetConnector(invURL);
+            return await connector.GetAssetPermissionsAsync(userID, assetID);
         }
 
         #endregion

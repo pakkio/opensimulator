@@ -29,6 +29,7 @@ using log4net;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading.Tasks;
 using Mono.Addins;
 using Nini.Config;
 using OpenSim.Framework;
@@ -329,6 +330,117 @@ namespace OpenSim.Region.CoreModules.ServiceConnectorsOut.Inventory
         public  int GetAssetPermissions(UUID userID, UUID assetID)
         {
             return m_RemoteConnector.GetAssetPermissions(userID, assetID);
+        }
+
+        // Async methods - delegate to remote connector
+        public async Task<bool> CreateUserInventoryAsync(UUID user)
+        {
+            return await m_RemoteConnector.CreateUserInventoryAsync(user);
+        }
+
+        public async Task<List<InventoryFolderBase>> GetInventorySkeletonAsync(UUID userId)
+        {
+            return await m_RemoteConnector.GetInventorySkeletonAsync(userId);
+        }
+
+        public async Task<InventoryFolderBase> GetRootFolderAsync(UUID userID)
+        {
+            return await m_RemoteConnector.GetRootFolderAsync(userID);
+        }
+
+        public async Task<InventoryFolderBase> GetFolderForTypeAsync(UUID userID, FolderType type)
+        {
+            return await m_RemoteConnector.GetFolderForTypeAsync(userID, type);
+        }
+
+        public async Task<InventoryCollection> GetFolderContentAsync(UUID userID, UUID folderID)
+        {
+            return await m_RemoteConnector.GetFolderContentAsync(userID, folderID);
+        }
+
+        public async Task<InventoryCollection[]> GetMultipleFoldersContentAsync(UUID principalID, UUID[] folderIDs)
+        {
+            return await m_RemoteConnector.GetMultipleFoldersContentAsync(principalID, folderIDs);
+        }
+
+        public async Task<List<InventoryItemBase>> GetFolderItemsAsync(UUID userID, UUID folderID)
+        {
+            return await m_RemoteConnector.GetFolderItemsAsync(userID, folderID);
+        }
+
+        public async Task<bool> AddFolderAsync(InventoryFolderBase folder)
+        {
+            return await m_RemoteConnector.AddFolderAsync(folder);
+        }
+
+        public async Task<bool> UpdateFolderAsync(InventoryFolderBase folder)
+        {
+            return await m_RemoteConnector.UpdateFolderAsync(folder);
+        }
+
+        public async Task<bool> MoveFolderAsync(InventoryFolderBase folder)
+        {
+            return await m_RemoteConnector.MoveFolderAsync(folder);
+        }
+
+        public async Task<bool> DeleteFoldersAsync(UUID ownerID, List<UUID> folderIDs)
+        {
+            return await m_RemoteConnector.DeleteFoldersAsync(ownerID, folderIDs);
+        }
+
+        public async Task<bool> PurgeFolderAsync(InventoryFolderBase folder)
+        {
+            return await m_RemoteConnector.PurgeFolderAsync(folder);
+        }
+
+        public async Task<bool> AddItemAsync(InventoryItemBase item)
+        {
+            return await m_RemoteConnector.AddItemAsync(item);
+        }
+
+        public async Task<bool> UpdateItemAsync(InventoryItemBase item)
+        {
+            return await m_RemoteConnector.UpdateItemAsync(item);
+        }
+
+        public async Task<bool> MoveItemsAsync(UUID ownerID, List<InventoryItemBase> items)
+        {
+            return await m_RemoteConnector.MoveItemsAsync(ownerID, items);
+        }
+
+        public async Task<bool> DeleteItemsAsync(UUID ownerID, List<UUID> itemIDs)
+        {
+            return await m_RemoteConnector.DeleteItemsAsync(ownerID, itemIDs);
+        }
+
+        public async Task<InventoryItemBase> GetItemAsync(UUID userID, UUID itemID)
+        {
+            return await m_RemoteConnector.GetItemAsync(userID, itemID);
+        }
+
+        public async Task<InventoryItemBase[]> GetMultipleItemsAsync(UUID userID, UUID[] itemIDs)
+        {
+            return await m_RemoteConnector.GetMultipleItemsAsync(userID, itemIDs);
+        }
+
+        public async Task<InventoryFolderBase> GetFolderAsync(UUID userID, UUID folderID)
+        {
+            return await m_RemoteConnector.GetFolderAsync(userID, folderID);
+        }
+
+        public async Task<bool> HasInventoryForUserAsync(UUID userID)
+        {
+            return await m_RemoteConnector.HasInventoryForUserAsync(userID);
+        }
+
+        public async Task<List<InventoryItemBase>> GetActiveGesturesAsync(UUID userId)
+        {
+            return await Task.FromResult(new List<InventoryItemBase>());
+        }
+
+        public async Task<int> GetAssetPermissionsAsync(UUID userID, UUID assetID)
+        {
+            return await m_RemoteConnector.GetAssetPermissionsAsync(userID, assetID);
         }
 
         #endregion
