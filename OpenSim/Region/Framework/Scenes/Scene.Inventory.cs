@@ -30,6 +30,7 @@ using System.Collections.Generic;
 using System.Collections;
 using System.Reflection;
 using System.Text;
+using System.Threading.Tasks;
 using System.Xml;
 using OpenMetaverse;
 using log4net;
@@ -182,6 +183,72 @@ namespace OpenSim.Region.Framework.Scenes
             }
         }
 
+        /// <summary>
+        /// Add the given inventory item to a user's inventory (async version).
+        /// </summary>
+        /// <param name="item"></param>
+        /// <param name="trigger"></param>
+        /// <returns></returns>
+        public async Task<bool> AddInventoryItemAsync(InventoryItemBase item, bool trigger)
+        {
+            if (item.Folder.IsNotZero() && await InventoryService.AddItemAsync(item))
+            {
+                int userlevel = Permissions.IsGod(item.Owner) ? 1 : 0;
+                if (trigger)
+                    EventManager.TriggerOnNewInventoryItemUploadComplete(item, userlevel);
+
+                return true;
+            }
+
+            // OK so either the viewer didn't send a folderID or AddItem failed
+            UUID originalFolder = item.Folder;
+            InventoryFolderBase f = null;
+            if (Enum.IsDefined(typeof(FolderType), (sbyte)item.AssetType))
+                f = await InventoryService.GetFolderForTypeAsync(item.Owner, (FolderType)item.AssetType);
+            if (f is not null)
+            {
+                m_log.Debug(
+                    $"[AGENT INVENTORY]: Found folder {f.Name} type {(AssetType)f.Type} for item {item.Name}");
+
+                item.Folder = f.ID;
+            }
+            else
+            {
+                f = await InventoryService.GetRootFolderAsync(item.Owner);
+                if (f is not null)
+                {
+                    item.Folder = f.ID;
+                }
+                else
+                {
+                    m_log.Warn(
+                        $"[AGENT INVENTORY]: Could not find root folder for {item.Owner} when trying to add item {item.Name} with no parent folder specified");
+                    return false;
+                }
+            }
+
+            if (await InventoryService.AddItemAsync(item))
+            {
+                int userlevel = Permissions.IsGod(item.Owner) ? 1 : 0;
+                if (trigger)
+                    EventManager.TriggerOnNewInventoryItemUploadComplete(item, userlevel);
+
+                if (originalFolder.IsNotZero())
+                {
+                    // Tell the viewer that the item didn't go there
+                    await ChangePlacementAsync(item, f);
+                }
+
+                return true;
+            }
+            else
+            {
+                m_log.Warn($"[AGENT INVENTORY]: Agent {item.Owner} could not add item {item.Name} {item.ID}");
+
+                return false;
+            }
+        }
+
         private void ChangePlacement(InventoryItemBase item, InventoryFolderBase f)
         {
             ScenePresence sp = GetScenePresence(item.Owner);
@@ -189,6 +256,22 @@ namespace OpenSim.Region.Framework.Scenes
             {
                 IClientAPI cli = sp.ControllingClient;
                 InventoryFolderBase parent = InventoryService.GetFolder(f.Owner, f.ParentID);
+                cli.SendRemoveInventoryItems([item.ID]);
+                cli.SendBulkUpdateInventory(Array.Empty<InventoryFolderBase>(), [item]);
+                string message = "The item was placed in folder " + f.Name;
+                if (parent is not null)
+                    message += " under " + parent.Name;
+                cli.SendAgentAlertMessage(message, false);
+            }
+        }
+
+        private async Task ChangePlacementAsync(InventoryItemBase item, InventoryFolderBase f)
+        {
+            ScenePresence sp = GetScenePresence(item.Owner);
+            if (sp is not null && sp.ControllingClient is not null && sp.ControllingClient.IsActive)
+            {
+                IClientAPI cli = sp.ControllingClient;
+                InventoryFolderBase parent = await InventoryService.GetFolderAsync(f.Owner, f.ParentID);
                 cli.SendRemoveInventoryItems([item.ID]);
                 cli.SendBulkUpdateInventory(Array.Empty<InventoryFolderBase>(), [item]);
                 string message = "The item was placed in folder " + f.Name;
@@ -332,6 +415,29 @@ namespace OpenSim.Region.Framework.Scenes
 
             // remoteClient.SendInventoryItemCreateUpdate(item);
             return asset.FullID;
+        }
+
+        /// <summary>
+        /// Move an item within the agent's inventory (async version).
+        /// </summary>
+        /// <param name="remoteClient"></param>
+        /// <param name="items"></param>
+        /// <returns></returns>
+        public async Task MoveInventoryItemAsync(IClientAPI remoteClient, List<InventoryItemBase> items)
+        {
+            UUID agentId = remoteClient.AgentId;
+            m_log.DebugFormat(
+                "[AGENT INVENTORY]: Moving {0} items for user {1}", items.Count, agentId);
+
+            if (!await InventoryService.MoveItemsAsync(agentId, items))
+                m_log.Warn("[AGENT INVENTORY]: Failed to move items for user " + agentId);
+
+            foreach (InventoryItemBase it in items)
+            {
+                InventoryItemBase n = await InventoryService.GetItemAsync(agentId, it.ID);
+                if(n is not null)
+                    remoteClient.SendBulkUpdateInventory(n);
+            }
         }
 
         /// <summary>
@@ -570,6 +676,130 @@ namespace OpenSim.Region.Framework.Scenes
                     //
                     // In other situations we cannot send out a bulk update here, since this will cause editing of clothing to start
                     // failing frequently.  Possibly this is a race with a separate transaction that uploads the asset.
+                    if (sendUpdate)
+                        remoteClient.SendBulkUpdateInventory(item);
+                }
+            }
+            else
+            {
+                m_log.ErrorFormat(
+                    "[AGENTINVENTORY]: Item id {0} not found for an inventory item update for {1}.",
+                    itemID, remoteClient.Name);
+            }
+        }
+
+        /// <summary>
+        /// Update inventory item (async version).
+        /// </summary>
+        /// <param name="remoteClient"></param>
+        /// <param name="transactionID"></param>
+        /// <param name="itemID"></param>
+        /// <param name="itemUpd"></param>
+        /// <returns></returns>
+        public async Task UpdateInventoryItemAsync(IClientAPI remoteClient, UUID transactionID,
+                                             UUID itemID, InventoryItemBase itemUpd)
+        {
+            InventoryItemBase item = await InventoryService.GetItemAsync(remoteClient.AgentId, itemID);
+            if (item is not null)
+            {
+                if (item.Owner.NotEqual(remoteClient.AgentId))
+                    return;
+
+                bool sendUpdate = false;
+
+                item.Flags = (item.Flags & ~(uint)255) | (itemUpd.Flags & (uint)255);
+                if(item.AssetType == (int)AssetType.Landmark)
+                {
+                    if(item.Name.StartsWith("HG ") && !itemUpd.Name.StartsWith("HG "))
+                    {
+                        itemUpd.Name = "HG " + itemUpd.Name;
+                        sendUpdate = true;
+                    }
+
+                    int origIndx = item.Description.LastIndexOf("@ htt");
+                    if(origIndx >= 0)
+                    {
+                        if(itemUpd.Description.LastIndexOf('@') < 0)
+                        {
+                            itemUpd.Description += string.Concat(" ", item.Description.AsSpan(origIndx));
+                            sendUpdate = true;
+                        }
+                    }
+                }
+                item.Name = itemUpd.Name;
+                item.Description = itemUpd.Description;
+
+                if (itemUpd.NextPermissions != 0)
+                {
+                    bool denyExportChange = false;
+
+                    if ((item.BasePermissions & (uint)(PermissionMask.All | PermissionMask.Export)) != (uint)(PermissionMask.All | PermissionMask.Export) || (item.CurrentPermissions & (uint)PermissionMask.Export) == 0 || item.CreatorIdAsUuid != item.Owner)
+                        denyExportChange = true;
+
+                    if (denyExportChange)
+                    {
+                        if ((item.EveryOnePermissions & (uint)PermissionMask.Export) != 0)
+                        {
+                            itemUpd.NextPermissions = (uint)(PermissionMask.All);
+                            itemUpd.EveryOnePermissions |= (uint)PermissionMask.Export;
+                        }
+                        else
+                        {
+                            itemUpd.EveryOnePermissions &= ~(uint)PermissionMask.Export;
+                        }
+                    }
+                    else
+                    {
+                        if ((itemUpd.EveryOnePermissions & (uint)PermissionMask.Export) != 0)
+                        {
+                            itemUpd.NextPermissions = (uint)(PermissionMask.All);
+                        }
+                    }
+
+                    if (item.NextPermissions != (itemUpd.NextPermissions & item.BasePermissions))
+                        item.Flags |= (uint)InventoryItemFlags.ObjectOverwriteNextOwner;
+                    item.NextPermissions = itemUpd.NextPermissions & item.BasePermissions;
+
+                    if (item.EveryOnePermissions != (itemUpd.EveryOnePermissions & item.BasePermissions))
+                        item.Flags |= (uint)InventoryItemFlags.ObjectOverwriteEveryone;
+                    item.EveryOnePermissions = itemUpd.EveryOnePermissions & item.BasePermissions;
+
+                    if (item.GroupPermissions != (itemUpd.GroupPermissions & item.BasePermissions))
+                        item.Flags |= (uint)InventoryItemFlags.ObjectOverwriteGroup;
+                    item.GroupPermissions = itemUpd.GroupPermissions & item.BasePermissions;
+
+                    item.GroupID = itemUpd.GroupID;
+                    item.GroupOwned = itemUpd.GroupOwned;
+                    item.CreationDate = itemUpd.CreationDate;
+
+                    if (itemUpd.CreationDate == 0)
+                        item.CreationDate = Util.UnixTimeSinceEpoch();
+                    else
+                        item.CreationDate = itemUpd.CreationDate;
+
+                    item.InvType = itemUpd.InvType;
+
+                    if (item.SalePrice != itemUpd.SalePrice ||
+                        item.SaleType != itemUpd.SaleType)
+                        item.Flags |= (uint)InventoryItemFlags.ObjectSlamSale;
+                    item.SalePrice = itemUpd.SalePrice;
+                    item.SaleType = itemUpd.SaleType;
+
+                    if (item.InvType == (int)InventoryType.Wearable && (item.Flags & 0xf) == 0 && (itemUpd.Flags & 0xf) != 0)
+                    {
+                        item.Flags = (item.Flags & 0xfffffff0) | (itemUpd.Flags & 0xf);
+                        sendUpdate = true;
+                    }
+
+                    await InventoryService.UpdateItemAsync(item);
+                }
+
+                if (transactionID.IsNotZero())
+                {
+                    AgentTransactionsModule?.HandleItemUpdateFromTransaction(remoteClient, transactionID, item);
+                }
+                else
+                {
                     if (sendUpdate)
                         remoteClient.SendBulkUpdateInventory(item);
                 }
