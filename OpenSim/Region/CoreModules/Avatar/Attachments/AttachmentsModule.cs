@@ -458,18 +458,15 @@ namespace OpenSim.Region.CoreModules.Avatar.Attachments
 
                     try
                     {
-                        XmlDocument d = null;
-                        if (itemData.TryGetValue(attach.ItemID, out string xmlData))
-                        {
-                            d = new XmlDocument();
-                            d.LoadXml(xmlData);
-                            m_log.Info($"[ATTACHMENT]: Found saved state for item {attach.ItemID}, loading it");
-                        }
-
                         // For NPCs, use the cloned inventory item ID if available, otherwise fallback to asset-only
                         UUID itemID = attach.ItemID.IsNotZero() ? attach.ItemID : UUID.Zero;
                         m_log.DebugFormat("[ATTACHMENTS MODULE]: Attempting to rez attachment for NPC {0} with itemID {1}, assetID {2}, point {3}", 
                             sp.Name, itemID, attach.AssetID, attachmentPt);
+                        
+                        // For NPCs, always start with clean script state (no saved state data)
+                        // This ensures attachment scripts begin in default state with reset variables
+                        XmlDocument d = null;
+                        m_log.DebugFormat("[ATTACHMENTS MODULE]: NPC attachment {0} will start with clean script state (no saved state loaded)", itemID);
                         
                         SceneObjectGroup result = RezSingleAttachmentFromInventoryInternal(sp, itemID, attach.AssetID, attachmentPt, true, d);
                         
