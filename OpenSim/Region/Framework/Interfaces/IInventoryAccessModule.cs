@@ -142,5 +142,13 @@ namespace OpenSim.Region.Framework.Interfaces
 
         // Must be here because of textures in user's inventory
         bool IsForeignUser(UUID userID, out string assetServerURL);
+
+        /// <summary>
+        /// Clone an inventory item for NPC use
+        /// </summary>
+        /// <param name="sourceItemID">The original item ID to clone</param>
+        /// <param name="sourceOwnerID">The owner of the original item</param>
+        /// <returns>UUID of the cloned item, or UUID.Zero if failed</returns>
+        UUID CloneInventoryItemForNPC(UUID sourceItemID, UUID sourceOwnerID);
     }
 }

@@ -63,6 +63,9 @@ namespace OpenSim.Region.CoreModules.Framework.InventoryAccess
             }
         }
 
+        // Cache for temporarily cloned NPC items
+        private Dictionary<UUID, InventoryItemBase> m_npcItemCache = new Dictionary<UUID, InventoryItemBase>();
+
         public bool CoalesceMultipleObjectsToInventory { get; set; }
 
         #region INonSharedRegionModule
@@ -1425,6 +1428,104 @@ namespace OpenSim.Region.CoreModules.Framework.InventoryAccess
                 UserManagementModule.AddCreatorUser(item.CreatorIdAsUuid, item.CreatorData);
 
             return item;
+        }
+
+        /// <summary>
+        /// Clone an inventory item for NPC use
+        /// </summary>
+        /// <param name="sourceItemID">The original item ID to clone</param>
+        /// <param name="sourceOwnerID">The owner of the original item</param>
+        /// <returns>UUID of the cloned item, or UUID.Zero if failed</returns>
+        public UUID CloneInventoryItemForNPC(UUID sourceItemID, UUID sourceOwnerID)
+        {
+            try
+            {
+                m_log.DebugFormat("[INVENTORY ACCESS MODULE]: CloneInventoryItemForNPC called - sourceItemID: {0}, sourceOwnerID: {1}", 
+                    sourceItemID, sourceOwnerID);
+
+                IInventoryService invService = m_Scene.RequestModuleInterface<IInventoryService>();
+                if (invService == null)
+                {
+                    m_log.Warn("[INVENTORY ACCESS MODULE]: CloneInventoryItemForNPC failed - no inventory service");
+                    return UUID.Zero;
+                }
+
+                // Get the source item (use async service but run synchronously for compatibility)
+                InventoryItemBase sourceItem = invService.GetItem(sourceOwnerID, sourceItemID);
+                if (sourceItem == null)
+                {
+                    m_log.WarnFormat("[INVENTORY ACCESS MODULE]: CloneInventoryItemForNPC failed - source item {0} not found for owner {1}", 
+                        sourceItemID, sourceOwnerID);
+                    return UUID.Zero;
+                }
+
+                // Create a temporary cloned item
+                InventoryItemBase clonedItem = new InventoryItemBase
+                {
+                    ID = UUID.Random(),
+                    Name = sourceItem.Name,
+                    Description = sourceItem.Description,
+                    AssetType = sourceItem.AssetType,
+                    InvType = sourceItem.InvType,
+                    AssetID = sourceItem.AssetID,
+                    CreatorId = sourceItem.CreatorId,
+                    CreatorData = sourceItem.CreatorData,
+                    Owner = sourceOwnerID,
+                    BasePermissions = sourceItem.BasePermissions,
+                    CurrentPermissions = sourceItem.CurrentPermissions,
+                    NextPermissions = sourceItem.NextPermissions,
+                    EveryOnePermissions = sourceItem.EveryOnePermissions,
+                    GroupPermissions = sourceItem.GroupPermissions,
+                    GroupID = sourceItem.GroupID,
+                    GroupOwned = sourceItem.GroupOwned,
+                    SalePrice = sourceItem.SalePrice,
+                    SaleType = sourceItem.SaleType,
+                    Flags = sourceItem.Flags,
+                    CreationDate = sourceItem.CreationDate,
+                    Folder = UUID.Zero // Temporary item, no folder needed
+                };
+
+                // Store the cloned item in our cache for NPC attachments
+                m_npcItemCache[clonedItem.ID] = clonedItem;
+                
+                m_log.DebugFormat("[INVENTORY ACCESS MODULE]: Cloned item {0} -> {1} ('{2}') for NPC, asset: {3}, cache size: {4}", 
+                    sourceItemID, clonedItem.ID, clonedItem.Name, clonedItem.AssetID, m_npcItemCache.Count);
+                
+                // Clean up old cache entries periodically
+                if (m_npcItemCache.Count > 100)
+                {
+                    CleanupNPCItemCache();
+                }
+                
+                return clonedItem.ID;
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[INVENTORY ACCESS MODULE]: Failed to clone inventory item {0}: {1}", sourceItemID, e.Message);
+                return UUID.Zero;
+            }
+        }
+
+        private void CleanupNPCItemCache()
+        {
+            // Remove items older than 1 hour
+            var cutoff = Util.UnixTimeSinceEpoch() - 3600; // 1 hour in seconds
+            var toRemove = new List<UUID>();
+            
+            foreach (var kvp in m_npcItemCache)
+            {
+                if (kvp.Value.CreationDate < cutoff)
+                {
+                    toRemove.Add(kvp.Key);
+                }
+            }
+            
+            foreach (var id in toRemove)
+            {
+                m_npcItemCache.Remove(id);
+            }
+            
+            m_log.DebugFormat("[INVENTORY ACCESS MODULE]: Cleaned up {0} old NPC cache entries", toRemove.Count);
         }
 
         #endregion

@@ -466,9 +466,23 @@ namespace OpenSim.Region.CoreModules.Avatar.Attachments
                             m_log.Info($"[ATTACHMENT]: Found saved state for item {attach.ItemID}, loading it");
                         }
 
-                        // If we're an NPC then skip all the item checks and manipulations since we don't have an
-                        // inventory right now.
-                        RezSingleAttachmentFromInventoryInternal(sp, UUID.Zero, attach.AssetID, attachmentPt, true, d);
+                        // For NPCs, use the cloned inventory item ID if available, otherwise fallback to asset-only
+                        UUID itemID = attach.ItemID.IsNotZero() ? attach.ItemID : UUID.Zero;
+                        m_log.DebugFormat("[ATTACHMENTS MODULE]: Attempting to rez attachment for NPC {0} with itemID {1}, assetID {2}, point {3}", 
+                            sp.Name, itemID, attach.AssetID, attachmentPt);
+                        
+                        SceneObjectGroup result = RezSingleAttachmentFromInventoryInternal(sp, itemID, attach.AssetID, attachmentPt, true, d);
+                        
+                        if (result != null)
+                        {
+                            m_log.DebugFormat("[ATTACHMENTS MODULE]: Successfully attached {0} to NPC {1} at point {2}", 
+                                result.Name, sp.Name, attachmentPt);
+                        }
+                        else
+                        {
+                            m_log.WarnFormat("[ATTACHMENTS MODULE]: Failed to attach itemID {0} to NPC {1} at point {2}", 
+                                itemID, sp.Name, attachmentPt);
+                        }
                     }
                     catch (Exception e)
                     {

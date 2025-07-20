@@ -173,6 +173,45 @@ namespace OpenSim.Region.OptionalModules.World.NPC
 
             NPCAvatar npcAvatar = null;
             string born = DateTime.UtcNow.ToString();
+            
+            // Clone attachment inventory items for this NPC
+            Dictionary<UUID, UUID> attachmentItemMap = new Dictionary<UUID, UUID>();
+            if (appearance != null)
+            {
+                List<AvatarAttachment> attachments = appearance.GetAttachments();
+                m_log.DebugFormat("[NPC MODULE]: NPC {0} has {1} attachments to clone", firstname + " " + lastname, attachments.Count);
+                
+                IInventoryAccessModule invAccess = scene.RequestModuleInterface<IInventoryAccessModule>();
+                if (invAccess != null && attachments.Count > 0)
+                {
+                    foreach (AvatarAttachment attach in attachments)
+                    {
+                        if (attach.ItemID != UUID.Zero)
+                        {
+                            m_log.DebugFormat("[NPC MODULE]: Cloning attachment item {0} at point {1} for NPC {2}", 
+                                attach.ItemID, attach.AttachPoint, firstname + " " + lastname);
+                            
+                            UUID clonedItemID = invAccess.CloneInventoryItemForNPC(attach.ItemID, owner);
+                            if (clonedItemID != UUID.Zero)
+                            {
+                                attachmentItemMap[attach.ItemID] = clonedItemID;
+                                m_log.DebugFormat("[NPC MODULE]: Successfully cloned attachment {0} -> {1} for NPC {2}", 
+                                    attach.ItemID, clonedItemID, firstname + " " + lastname);
+                            }
+                            else
+                            {
+                                m_log.WarnFormat("[NPC MODULE]: Failed to clone attachment item {0} for NPC {1}", 
+                                    attach.ItemID, firstname + " " + lastname);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    if (invAccess == null)
+                        m_log.Warn("[NPC MODULE]: No inventory access module available for NPC attachment cloning");
+                }
+            }
 
             try
             {
@@ -197,6 +236,24 @@ namespace OpenSim.Region.OptionalModules.World.NPC
             //    "[NPC MODULE]: Creating NPC {0} {1} {2}, owner={3}, senseAsAgent={4} at {5} in {6}",
             //    firstname, lastname, npcAvatar.AgentId, owner, senseAsAgent, position, scene.RegionInfo.RegionName);
 
+            // Update appearance with cloned attachment item IDs
+            AvatarAppearance clonedAppearance = new AvatarAppearance(appearance, true);
+            if (attachmentItemMap.Count > 0)
+            {
+                m_log.DebugFormat("[NPC MODULE]: Updating NPC {0} appearance with {1} cloned attachment mappings", 
+                    firstname + " " + lastname, attachmentItemMap.Count);
+                
+                foreach (AvatarAttachment attach in appearance.GetAttachments())
+                {
+                    if (attachmentItemMap.TryGetValue(attach.ItemID, out UUID clonedItemID))
+                    {
+                        m_log.DebugFormat("[NPC MODULE]: Mapping attachment point {0}: {1} -> {2} (asset: {3})", 
+                            attach.AttachPoint, attach.ItemID, clonedItemID, attach.AssetID);
+                        clonedAppearance.SetAttachment(attach.AttachPoint, clonedItemID, attach.AssetID);
+                    }
+                }
+            }
+
             AgentCircuitData acd = new AgentCircuitData()
             {
                 circuitcode = circuit,
@@ -204,7 +261,7 @@ namespace OpenSim.Region.OptionalModules.World.NPC
                 firstname = firstname,
                 lastname = lastname,
                 ServiceURLs = new Dictionary<string, object>(),
-                Appearance = new AvatarAppearance(appearance, true)
+                Appearance = clonedAppearance
             };
 
             /*
