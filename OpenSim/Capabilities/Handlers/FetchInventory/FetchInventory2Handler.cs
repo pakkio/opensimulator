@@ -53,7 +53,7 @@ namespace OpenSim.Capabilities.Handlers
             m_agentID = agentId;
         }
 
-        public async Task<string> FetchInventoryRequest(string request, string path, string param, IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
+        public string FetchInventoryRequest(string request, string path, string param, IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
             //m_log.DebugFormat("[FETCH INVENTORY HANDLER]: Received FetchInventory capability request {0}", request);
 
@@ -74,11 +74,11 @@ namespace OpenSim.Capabilities.Handlers
             {
                 items = new InventoryItemBase[itemsRequested.Count];
                 foreach (UUID id in itemIDs)
-                    items[i++] = await m_inventoryService.GetItemAsync(UUID.Zero, id);
+                    items[i++] = m_inventoryService.GetItem(UUID.Zero, id);
             }
             else
             {
-                items = await m_inventoryService.GetMultipleItemsAsync(m_agentID, itemIDs);
+                items = m_inventoryService.GetMultipleItems(m_agentID, itemIDs);
             }
 
             osUTF8 lsl = LLSDxmlEncode2.Start(4096);

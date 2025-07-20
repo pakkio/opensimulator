@@ -65,7 +65,7 @@ namespace OpenSim.Capabilities.Handlers
             m_Scene = s;
         }
 
-        public async Task FetchInventoryDescendentsRequest(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse, ExpiringKey<UUID> BadRequests)
+        public void FetchInventoryDescendentsRequest(IOSHttpRequest httpRequest, IOSHttpResponse httpResponse, ExpiringKey<UUID> BadRequests)
         {
             //m_log.DebugFormat("[XXX]: FetchInventoryDescendentsRequest in {0}, {1}", (m_Scene == null) ? "none" : m_Scene.Name, request);
 
@@ -172,7 +172,7 @@ namespace OpenSim.Capabilities.Handlers
 
             UUID requester = folders[0].owner_id;
 
-            List<InventoryCollection> invcollSet = await FetchAsync(folders, bad_folders);
+            List<InventoryCollection> invcollSet = Fetch(folders, bad_folders);
             //m_log.DebugFormat("[XXX]: Got {0} folders from a request of {1}", invcollSet.Count, folders.Count);
 
             int invcollSetCount = 0;
@@ -300,7 +300,7 @@ namespace OpenSim.Capabilities.Handlers
             }
         }
 
-        private async Task<List<InventoryCollection>> FetchAsync(List<LLSDFetchInventoryDescendents> fetchFolders, List<UUID> bad_folders)
+        private List<InventoryCollection> Fetch(List<LLSDFetchInventoryDescendents> fetchFolders, List<UUID> bad_folders)
         {
             //m_log.DebugFormat(
             //    "[WEB FETCH INV DESC HANDLER]: Fetching {0} folders for owner {1}", fetchFolders.Count, fetchFolders[0].owner_id);
@@ -355,7 +355,7 @@ namespace OpenSim.Capabilities.Handlers
             { 
                 //m_log.DebugFormat("[XXX]: {0}", string.Join(",", fids));
 
-                InventoryCollection[] fetchedContents = await m_InventoryService.GetMultipleFoldersContentAsync(otherFolders[0].owner_id, otherIDs.ToArray());
+                InventoryCollection[] fetchedContents = m_InventoryService.GetMultipleFoldersContent(otherFolders[0].owner_id, otherIDs.ToArray());
 
                 if (fetchedContents is null)
                      return null;
@@ -363,7 +363,7 @@ namespace OpenSim.Capabilities.Handlers
                 if (fetchedContents.Length == 0)
                 {
                     foreach (LLSDFetchInventoryDescendents freq in otherFolders)
-                        await BadFolderAsync(freq, null, bad_folders);
+                        BadFolder(freq, null, bad_folders);
                 }
                 else
                 {
@@ -376,7 +376,7 @@ namespace OpenSim.Capabilities.Handlers
                         otherFolders[i]=null;
                         i++;
 
-                        if (await BadFolderAsync(freq, contents, bad_folders))
+                        if (BadFolder(freq, contents, bad_folders))
                             continue;
 
                         if(!freq.fetch_folders)
@@ -387,7 +387,7 @@ namespace OpenSim.Capabilities.Handlers
                         contents.Descendents = contents.Items.Count + contents.Folders.Count;
  
                         // Next: link management
-                        await ProcessLinksAsync(freq, contents);
+                        ProcessLinks(freq, contents);
 
                         result.Add(contents);
                     }
@@ -400,7 +400,7 @@ namespace OpenSim.Capabilities.Handlers
             return result;
         }
 
-        private async Task<bool> BadFolderAsync(LLSDFetchInventoryDescendents freq, InventoryCollection contents, List<UUID> bad_folders)
+        private bool BadFolder(LLSDFetchInventoryDescendents freq, InventoryCollection contents, List<UUID> bad_folders)
         {
             if (contents is null)
             {
@@ -412,7 +412,7 @@ namespace OpenSim.Capabilities.Handlers
             // Must fetch it individually
             if (contents.FolderID.IsZero())
             {
-                InventoryFolderBase containingFolder = await m_InventoryService.GetFolderAsync(freq.owner_id, freq.folder_id);
+                InventoryFolderBase containingFolder = m_InventoryService.GetFolder(freq.owner_id, freq.folder_id);
                 if (containingFolder is null)
                 {
                     bad_folders.Add(freq.folder_id);
@@ -426,7 +426,7 @@ namespace OpenSim.Capabilities.Handlers
             return false;
         }
 
-        private async Task ProcessLinksAsync(LLSDFetchInventoryDescendents freq, InventoryCollection contents)
+        private void ProcessLinks(LLSDFetchInventoryDescendents freq, InventoryCollection contents)
         {
             if (contents.Items is null || contents.Items.Count == 0)
                 return;
@@ -445,7 +445,7 @@ namespace OpenSim.Capabilities.Handlers
             // get the linked if any
             if (itemIDs.Count > 0)
             {
-                InventoryItemBase[] linked = await m_InventoryService.GetMultipleItemsAsync(freq.owner_id, itemIDs.ToArray());
+                InventoryItemBase[] linked = m_InventoryService.GetMultipleItems(freq.owner_id, itemIDs.ToArray());
                     
                 if (linked is not null)
                 {

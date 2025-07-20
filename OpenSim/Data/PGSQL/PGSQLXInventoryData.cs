@@ -29,6 +29,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
+using System.Threading.Tasks;
 using OpenMetaverse;
 using OpenSim.Framework;
 using System.Reflection;
@@ -135,6 +136,7 @@ namespace OpenSim.Data.PGSQL
         {
             return m_Items.GetAssetPermissions(principalID, assetID);
         }
+
     }
 
     public class PGSQLItemHandler : PGSQLInventoryHandler<XInventoryItem>
@@ -244,6 +246,7 @@ namespace OpenSim.Data.PGSQL
 
             return true;
         }
+
     }
 
     public class PGSQLFolderHandler : PGSQLInventoryHandler<XInventoryFolder>
@@ -298,6 +301,7 @@ namespace OpenSim.Data.PGSQL
 
             return true;
         }
+
     }
 
     public class PGSQLInventoryHandler<T> : PGSQLGenericTableHandler<T> where T: class, new()
@@ -340,5 +344,6 @@ namespace OpenSim.Data.PGSQL
 
             return true;
         }
+
     }
 }

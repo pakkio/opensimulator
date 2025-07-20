@@ -28,6 +28,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Threading.Tasks;
 using log4net;
 using MySql.Data.MySqlClient;
 using OpenMetaverse;
@@ -120,6 +121,7 @@ namespace OpenSim.Data.MySQL
         {
             return m_Items.GetAssetPermissions(principalID, assetID);
         }
+
     }
 
     public class MySqlItemHandler : MySqlInventoryHandler<XInventoryItem>
@@ -245,6 +247,7 @@ namespace OpenSim.Data.MySQL
 
             return true;
         }
+
     }
 
     public class MySqlFolderHandler : MySqlInventoryHandler<XInventoryFolder>
@@ -289,6 +292,7 @@ namespace OpenSim.Data.MySQL
 
             return true;
         }
+
     }
 
     public class MySqlInventoryHandler<T> : MySQLGenericTableHandler<T> where T: class, new()
@@ -331,5 +335,6 @@ namespace OpenSim.Data.MySQL
 
             return true;
         }
+
     }
 }

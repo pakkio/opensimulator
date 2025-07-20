@@ -29,6 +29,7 @@ using System;
 using System.Data;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 #if CSharpSqlite
     using Community.CsharpSqlite.Sqlite;
 #else
@@ -132,6 +133,7 @@ namespace OpenSim.Data.SQLite
         {
             return m_Items.GetAssetPermissions(principalID, assetID);
         }
+
     }
 
     public class SqliteItemHandler : SqliteInventoryHandler<XInventoryItem>
@@ -247,6 +249,7 @@ namespace OpenSim.Data.SQLite
 
             return perms;
         }
+
     }
 
     public class SqliteFolderHandler : SqliteInventoryHandler<XInventoryFolder>
@@ -291,6 +294,7 @@ namespace OpenSim.Data.SQLite
             return true;
         }
 
+
     }
 
     public class SqliteInventoryHandler<T> : SQLiteGenericTableHandler<T> where T: class, new()
@@ -318,5 +322,6 @@ namespace OpenSim.Data.SQLite
 
             return true;
         }
+
     }
 }
