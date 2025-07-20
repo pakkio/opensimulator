@@ -475,25 +475,10 @@ namespace OpenSim.Region.CoreModules.Avatar.Attachments
                             m_log.DebugFormat("[ATTACHMENTS MODULE]: Successfully attached {0} to NPC {1} at point {2}", 
                                 result.Name, sp.Name, attachmentPt);
                             
-                            // Reset all scripts in NPC attachment to ensure clean state_entry() execution
-                            foreach (SceneObjectPart part in result.Parts)
-                            {
-                                if (part.Inventory.ContainsScripts())
-                                {
-                                    foreach (UUID itemId in part.Inventory.GetInventoryList())
-                                    {
-                                        TaskInventoryItem item = part.Inventory.GetInventoryItem(itemId);
-                                        if (item != null && item.InvType == (int)InventoryType.LSL)
-                                        {
-                                            m_log.DebugFormat("[ATTACHMENTS MODULE]: Resetting script {0} in NPC attachment {1} for clean state", 
-                                                item.Name, result.Name);
-                                            m_scene.EventManager.TriggerRemoveScript(part.LocalId, item.ItemID);
-                                            m_scene.EventManager.TriggerRezScript(part.LocalId, item.ItemID, "", 
-                                                0, true, "YEngine", 0);
-                                        }
-                                    }
-                                }
-                            }
+                            // TODO: Script reset functionality - currently disabled due to script breaking
+                            // Will implement proper script reset in future enhancement
+                            m_log.DebugFormat("[ATTACHMENTS MODULE]: NPC attachment {0} scripts will use current behavior (script reset disabled)", 
+                                result.Name);
                         }
                         else
                         {
