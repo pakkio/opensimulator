@@ -1966,15 +1966,28 @@ namespace OpenSim.Region.Framework.Scenes
 
             if (objs is not null)
             {
-                for(int i = 0; i< objs.Count; ++i)
+                // Move target checking to background thread to avoid blocking main loop
+                WorkManager.RunInThreadPool(delegate 
                 {
-                    UUID entry = objs[i];
-                    SceneObjectGroup grp = GetSceneObjectGroup(entry);
-                    if (grp is null)
-                        m_groupsWithTargets.Remove(entry);
-                    else
-                        grp.CheckAtTargets();
-                }
+                    for(int i = 0; i< objs.Count; ++i)
+                    {
+                        UUID entry = objs[i];
+                        SceneObjectGroup grp = GetSceneObjectGroup(entry);
+                        if (grp is null)
+                            m_groupsWithTargets.Remove(entry);
+                        else
+                        {
+                            try
+                            {
+                                grp.CheckAtTargets();
+                            }
+                            catch (Exception e)
+                            {
+                                m_log.Error($"[SCENE]: Failed to check targets for {grp.Name}, {grp.UUID} - {e.Message}");
+                            }
+                        }
+                    }
+                }, null, "CheckAtTargets", false);
             }
         }
 

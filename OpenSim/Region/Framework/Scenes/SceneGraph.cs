@@ -34,6 +34,7 @@ using OpenMetaverse;
 using OpenMetaverse.Packets;
 using log4net;
 using OpenSim.Framework;
+using OpenSim.Framework.Monitoring;
 using OpenSim.Region.PhysicsModules.SharedBase;
 using System.Runtime.InteropServices;
 
@@ -200,10 +201,21 @@ namespace OpenSim.Region.Framework.Scenes
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected internal void UpdatePresences()
         {
-            ForEachScenePresence(delegate(ScenePresence presence)
+            // Use parallel processing for better performance with many avatars
+            WorkManager.RunInThreadPool(delegate 
             {
-                presence.Update();
-            });
+                ForEachScenePresence(delegate(ScenePresence presence)
+                {
+                    try
+                    {
+                        presence.Update();
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.Error($"[SCENE GRAPH]: Failed to update presence {presence.Name}, {presence.UUID} - {e.Message}");
+                    }
+                });
+            }, null, "UpdatePresences", false);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -648,22 +660,26 @@ namespace OpenSim.Region.Framework.Scenes
                 m_updateList = new Dictionary<UUID, SceneObjectGroup>();
             }
 
-            // Go through all updates
-            foreach (SceneObjectGroup sog in updates.Values)
+            // Use background thread for object updates to avoid blocking main loop
+            WorkManager.RunInThreadPool(delegate 
             {
-                if (sog.IsDeleted)
-                    continue;
+                // Go through all updates
+                foreach (SceneObjectGroup sog in updates.Values)
+                {
+                    if (sog.IsDeleted)
+                        continue;
 
-                // Don't abort the whole update if one entity happens to give us an exception.
-                try
-                {
-                    sog.Update();
+                    // Don't abort the whole update if one entity happens to give us an exception.
+                    try
+                    {
+                        sog.Update();
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.Error($"[INNER SCENE]: Failed to update {sog.Name}, {sog.UUID} - {e.Message}");
+                    }
                 }
-                catch (Exception e)
-                {
-                    m_log.Error($"[INNER SCENE]: Failed to update {sog.Name}, {sog.UUID} - {e.Message}");
-                }
-            }
+            }, null, "UpdateObjectGroups", false);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
