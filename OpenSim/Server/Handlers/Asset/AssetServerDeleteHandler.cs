@@ -33,6 +33,7 @@ using System.IO;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Serialization;
 using OpenSim.Server.Base;
@@ -80,6 +81,12 @@ namespace OpenSim.Server.Handlers.Asset
         protected override byte[] ProcessRequest(string path, Stream request,
                 IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
+            return Task.Run(async () => await ProcessRequestAsync(path, request, httpRequest, httpResponse)).Result;
+        }
+
+        protected virtual async Task<byte[]> ProcessRequestAsync(string path, Stream request,
+                IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
+        {
             bool result = false;
 
             string[] p = SplitParams(path);
@@ -90,7 +97,7 @@ namespace OpenSim.Server.Handlers.Asset
                 {
                     string assetID = p[0];
 
-                    AssetBase asset = m_AssetService.Get(assetID);
+                    AssetBase asset = await m_AssetService.GetAsync(assetID);
                     if (asset != null)
                     {
                         if (m_allowedTypes == AllowedRemoteDeleteTypes.All

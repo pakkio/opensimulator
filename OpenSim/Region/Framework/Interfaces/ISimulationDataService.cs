@@ -27,6 +27,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using OpenMetaverse;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Scenes;
@@ -137,5 +138,14 @@ namespace OpenSim.Region.Framework.Interfaces
         void RemoveExtra(UUID regionID, string name);
 
         Dictionary<string, string> GetExtra(UUID regionID);
+
+        // Async versions for performance optimization
+        Task StoreObjectAsync(SceneObjectGroup obj, UUID regionUUID) => Task.Run(() => StoreObject(obj, regionUUID));
+        Task<List<SceneObjectGroup>> LoadObjectsAsync(UUID regionUUID) => Task.Run(() => LoadObjects(regionUUID));
+        Task StoreTerrainAsync(TerrainData terrain, UUID regionID) => Task.Run(() => StoreTerrain(terrain, regionID));
+        Task StoreBakedTerrainAsync(TerrainData terrain, UUID regionID) => Task.Run(() => StoreBakedTerrain(terrain, regionID));
+        Task<TerrainData> LoadTerrainAsync(UUID regionID, int pSizeX, int pSizeY, int pSizeZ) => Task.Run(() => LoadTerrain(regionID, pSizeX, pSizeY, pSizeZ));
+        Task<TerrainData> LoadBakedTerrainAsync(UUID regionID, int pSizeX, int pSizeY, int pSizeZ) => Task.Run(() => LoadBakedTerrain(regionID, pSizeX, pSizeY, pSizeZ));
+        Task<List<LandData>> LoadLandObjectsAsync(UUID regionUUID) => Task.Run(() => LoadLandObjects(regionUUID));
     }
 }

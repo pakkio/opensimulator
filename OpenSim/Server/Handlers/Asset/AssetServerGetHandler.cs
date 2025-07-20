@@ -35,6 +35,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Serialization;
+using System.Threading.Tasks;
 using OpenSim.Server.Base;
 using OpenSim.Services.Interfaces;
 using OpenSim.Framework;
@@ -68,6 +69,12 @@ namespace OpenSim.Server.Handlers.Asset
         protected override byte[] ProcessRequest(string path, Stream request,
                 IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
+            return Task.Run(async () => await ProcessRequestAsync(path, request, httpRequest, httpResponse)).Result;
+        }
+
+        protected virtual async Task<byte[]> ProcessRequestAsync(string path, Stream request,
+                IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
+        {
             byte[] result = Array.Empty<byte>();
 
             string[] p = SplitParams(path);
@@ -83,7 +90,7 @@ namespace OpenSim.Server.Handlers.Asset
 
                 if (cmd == "data")
                 {
-                    result = m_AssetService.GetData(id);
+                    result = await m_AssetService.GetDataAsync(id);
                     if (result == null)
                     {
                         httpResponse.StatusCode = (int)HttpStatusCode.NotFound;
@@ -98,7 +105,7 @@ namespace OpenSim.Server.Handlers.Asset
                 }
                 else if (cmd == "metadata")
                 {
-                    AssetMetadata metadata = m_AssetService.GetMetadata(id);
+                    AssetMetadata metadata = await m_AssetService.GetMetadataAsync(id);
 
                     if (metadata != null)
                     {
@@ -128,7 +135,7 @@ namespace OpenSim.Server.Handlers.Asset
                 // Get the entire asset (metadata + data)
 
                 id = p[0];
-                AssetBase asset = m_AssetService.Get(id);
+                AssetBase asset = await m_AssetService.GetAsync(id);
 
                 if (asset != null)
                 {

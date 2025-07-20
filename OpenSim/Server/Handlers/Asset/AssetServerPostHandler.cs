@@ -33,6 +33,7 @@ using System.IO;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Serialization;
 using OpenSim.Server.Base;
@@ -64,6 +65,12 @@ namespace OpenSim.Server.Handlers.Asset
         protected override byte[] ProcessRequest(string path, Stream request,
                 IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
+            return Task.Run(async () => await ProcessRequestAsync(path, request, httpRequest, httpResponse)).Result;
+        }
+
+        protected virtual async Task<byte[]> ProcessRequestAsync(string path, Stream request,
+                IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
+        {
             AssetBase asset;
             XmlSerializer xs = new XmlSerializer(typeof(AssetBase));
 
@@ -88,7 +95,7 @@ namespace OpenSim.Server.Handlers.Asset
             }
             else
             {
-                string id = m_AssetService.Store(asset);
+                string id = await m_AssetService.StoreAsync(asset);
 
                 xs = new XmlSerializer(typeof(string));
                 return ServerUtils.SerializeResult(xs, id);

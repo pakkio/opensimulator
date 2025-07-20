@@ -33,6 +33,7 @@ using System.Runtime;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Timers;
 using Nini.Config;
 using OpenMetaverse;
@@ -2148,7 +2149,18 @@ namespace OpenSim.Region.Framework.Scenes
         /// </summary>
         public void SaveTerrain()
         {
-            SimulationDataService.StoreTerrain(Heightmap.GetTerrainData(), RegionInfo.RegionID);
+            // Use async operation to avoid blocking calling thread
+            Task.Run(async () => 
+            {
+                try
+                {
+                    await SimulationDataService.StoreTerrainAsync(Heightmap.GetTerrainData(), RegionInfo.RegionID);
+                }
+                catch (Exception e)
+                {
+                    m_log.ErrorFormat("[SCENE]: Failed to save terrain: {0}", e.Message);
+                }
+            });
         }
 
         /// <summary>
@@ -2157,7 +2169,20 @@ namespace OpenSim.Region.Framework.Scenes
         public void SaveBakedTerrain()
         {
             if(Bakedmap is not null)
-                SimulationDataService.StoreBakedTerrain(Bakedmap.GetTerrainData(), RegionInfo.RegionID);
+            {
+                // Use async operation to avoid blocking calling thread
+                Task.Run(async () => 
+                {
+                    try
+                    {
+                        await SimulationDataService.StoreBakedTerrainAsync(Bakedmap.GetTerrainData(), RegionInfo.RegionID);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.ErrorFormat("[SCENE]: Failed to save baked terrain: {0}", e.Message);
+                    }
+                });
+            }
         }
 
         private ViewerEnvironment m_regionEnvironment;
@@ -2321,23 +2346,35 @@ namespace OpenSim.Region.Framework.Scenes
             LoadingPrims = true;
             m_log.Info("[SCENE]: Loading objects from datastore");
 
-            List<SceneObjectGroup> PrimsFromDB = SimulationDataService.LoadObjects(regionID);
-
-            m_log.InfoFormat("[SCENE]: Loaded {0} objects from the datastore", PrimsFromDB.Count);
-
-            foreach (SceneObjectGroup group in PrimsFromDB)
+            // Use async operation to avoid blocking the calling thread
+            Task.Run(async () =>
             {
-                AddRestoredSceneObject(group, true, true);
-                SceneObjectPart rootPart = group.GetPart(group.UUID);
-                rootPart.Flags &= ~(PrimFlags.Scripted | PrimFlags.CreateSelected);
+                try
+                {
+                    List<SceneObjectGroup> PrimsFromDB = await SimulationDataService.LoadObjectsAsync(regionID);
 
-                rootPart.TrimPermissions();
-                group.InvalidateDeepEffectivePerms();
-                EventManager.TriggerOnSceneObjectLoaded(group);
-            }
+                    m_log.InfoFormat("[SCENE]: Loaded {0} objects from the datastore", PrimsFromDB.Count);
 
-            LoadingPrims = false;
-            EventManager.TriggerPrimsLoaded(this);
+                    foreach (SceneObjectGroup group in PrimsFromDB)
+                    {
+                        AddRestoredSceneObject(group, true, true);
+                        SceneObjectPart rootPart = group.GetPart(group.UUID);
+                        rootPart.Flags &= ~(PrimFlags.Scripted | PrimFlags.CreateSelected);
+
+                        rootPart.TrimPermissions();
+                        group.InvalidateDeepEffectivePerms();
+                        EventManager.TriggerOnSceneObjectLoaded(group);
+                    }
+
+                    LoadingPrims = false;
+                    EventManager.TriggerPrimsLoaded(this);
+                }
+                catch (Exception e)
+                {
+                    m_log.ErrorFormat("[SCENE]: Failed to load objects from datastore: {0}", e.Message);
+                    LoadingPrims = false;
+                }
+            });
         }
 
         public bool SupportsRayCastFiltered()
