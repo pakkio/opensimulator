@@ -912,7 +912,23 @@ namespace OpenSim.Region.CoreModules.Framework.InventoryAccess
             InventoryItemBase item = m_Scene.InventoryService.GetItem(remoteClient.AgentId, itemID);
 
             if (item is null)
-                return null;
+            {
+                m_log.DebugFormat("[INVENTORY ACCESS MODULE]: Item {0} not found in regular inventory for {1}, checking NPC cache", 
+                    itemID, remoteClient.Name);
+                
+                // Check if this is a cached NPC item
+                if (m_npcItemCache.TryGetValue(itemID, out item))
+                {
+                    m_log.DebugFormat("[INVENTORY ACCESS MODULE]: Found cached NPC item {0} ('{1}') for {2}, asset: {3}", 
+                        itemID, item.Name, remoteClient.Name, item.AssetID);
+                }
+                else
+                {
+                    m_log.WarnFormat("[INVENTORY ACCESS MODULE]: Item {0} not found in regular inventory or NPC cache for {1}", 
+                        itemID, remoteClient.Name);
+                    return null;
+                }
+            }
 
             if (attachment && (item.Flags & (uint)InventoryItemFlags.ObjectHasMultipleItems) != 0)
             {
