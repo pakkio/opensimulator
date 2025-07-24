@@ -52,6 +52,13 @@ namespace OpenSim.Region.Framework.Scenes.Animation
         }
         protected AnimationSet m_animations = new AnimationSet();
 
+        private readonly Dictionary<UUID, int> m_npcAnimationPriorities = new Dictionary<UUID, int>();
+        private readonly Dictionary<UUID, int> m_npcAnimationTimestamps = new Dictionary<UUID, int>();
+        private const int NPC_ANIMATION_OVERRIDE_DURATION = 5000; // 5 seconds
+        private const int NPC_CLEANUP_INTERVAL = 1000; // Cleanup every second, not every frame
+        private int m_lastNPCCleanupTime = 0;
+        private readonly List<UUID> m_expiredAnimationsBuffer = new List<UUID>(16); // Reusable buffer
+
         /// <value>
         /// The current movement animation
         /// </value>
@@ -94,6 +101,22 @@ namespace OpenSim.Region.Framework.Scenes.Animation
                     "[SCENE PRESENCE ANIMATOR]: Adding animation {0} {1} for {2}",
                     GetAnimName(animID), animID, m_scenePresence.Name);
 
+            // Enhanced NPC animation support
+            if (m_scenePresence.IsNPC)
+            {
+                // Track NPC animation priorities and timestamps
+                int currentTime = Environment.TickCount;
+                m_npcAnimationTimestamps[animID] = currentTime;
+                
+                // Set high priority for scripted NPC animations
+                m_npcAnimationPriorities[animID] = 10;
+                
+                if (m_scenePresence.Scene.DebugAnimations)
+                    m_log.DebugFormat(
+                        "[SCENE PRESENCE ANIMATOR]: NPC animation {0} added with high priority for {1}",
+                        GetAnimName(animID), m_scenePresence.Name);
+            }
+
             if (m_animations.Add(animID, m_scenePresence.ControllingClient.NextAnimationSequenceNumber, objectID))
             {
                 SendAnimPack();
@@ -133,6 +156,13 @@ namespace OpenSim.Region.Framework.Scenes.Animation
                 m_log.DebugFormat(
                     "[SCENE PRESENCE ANIMATOR]: Removing animation {0} {1} for {2}",
                     GetAnimName(animID), animID, m_scenePresence.Name);
+
+            // Clean up NPC animation tracking
+            if (m_scenePresence.IsNPC)
+            {
+                m_npcAnimationPriorities.Remove(animID);
+                m_npcAnimationTimestamps.Remove(animID);
+            }
 
             if (m_animations.Remove(animID, allowNoDefault))
             {
@@ -583,6 +613,17 @@ namespace OpenSim.Region.Framework.Scenes.Animation
             // m_log.DebugFormat("[SCENE PRESENCE ANIMATOR]: Updating movement animations for {0}", m_scenePresence.Name);
             lock (m_animations)
             {
+                // Enhanced NPC animation handling - respect scripted animations
+                if (m_scenePresence.IsNPC && HasActiveNPCAnimations())
+                {
+                    // Don't override movement animations if NPC has active scripted animations
+                    if (m_scenePresence.Scene.DebugAnimations)
+                        m_log.DebugFormat(
+                            "[SCENE PRESENCE ANIMATOR]: Preserving NPC scripted animations for {0}",
+                            m_scenePresence.Name);
+                    return false;
+                }
+
                 string newMovementAnimation = DetermineMovementAnimation();
                 if (CurrentMovementAnimation.Equals(newMovementAnimation))
                     return false;
@@ -886,6 +927,113 @@ namespace OpenSim.Region.Framework.Scenes.Animation
             }
 
             return animName;
+        }
+
+        /// <summary>
+        /// Check if NPC has active scripted animations that should not be overridden
+        /// </summary>
+        /// <returns>true if NPC has active high-priority animations</returns>
+        private bool HasActiveNPCAnimations()
+        {
+            if (!m_scenePresence.IsNPC)
+                return false;
+
+            // Early exit if no animations tracked
+            if (m_npcAnimationPriorities.Count == 0)
+                return false;
+
+            int currentTime = Environment.TickCount;
+            
+            // Only cleanup periodically, not every frame
+            if (currentTime - m_lastNPCCleanupTime > NPC_CLEANUP_INTERVAL)
+            {
+                CleanupExpiredNPCAnimations(currentTime);
+                m_lastNPCCleanupTime = currentTime;
+            }
+
+            // Fast check for active high-priority animations without cleanup overhead
+            foreach (var kvp in m_npcAnimationPriorities)
+            {
+                if (kvp.Value >= 8 && m_animations.HasAnimation(kvp.Key))
+                {
+                    // Check if animation is still within override duration
+                    if (m_npcAnimationTimestamps.TryGetValue(kvp.Key, out int timestamp))
+                    {
+                        if (currentTime - timestamp <= NPC_ANIMATION_OVERRIDE_DURATION)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            
+            return false;
+        }
+
+        /// <summary>
+        /// Clean up expired NPC animations - called periodically, not every frame
+        /// </summary>
+        /// <param name="currentTime">Current tick count</param>
+        private void CleanupExpiredNPCAnimations(int currentTime)
+        {
+            // Reuse buffer to avoid allocations
+            m_expiredAnimationsBuffer.Clear();
+            
+            foreach (var kvp in m_npcAnimationTimestamps)
+            {
+                if (currentTime - kvp.Value > NPC_ANIMATION_OVERRIDE_DURATION)
+                {
+                    m_expiredAnimationsBuffer.Add(kvp.Key);
+                }
+            }
+            
+            // Remove expired animations
+            foreach (var animID in m_expiredAnimationsBuffer)
+            {
+                m_npcAnimationTimestamps.Remove(animID);
+                m_npcAnimationPriorities.Remove(animID);
+            }
+        }
+
+        /// <summary>
+        /// Add NPC animation with specified priority and duration
+        /// </summary>
+        /// <param name="animID">Animation UUID</param>
+        /// <param name="objectID">Object that triggered the animation</param>
+        /// <param name="priority">Animation priority (higher = more important)</param>
+        /// <param name="duration">Duration in milliseconds to maintain priority</param>
+        public void AddNPCAnimation(UUID animID, UUID objectID, int priority = 10, int duration = 5000)
+        {
+            if (!m_scenePresence.IsNPC)
+            {
+                // Fall back to regular animation for non-NPCs
+                AddAnimation(animID, objectID);
+                return;
+            }
+
+            if (m_scenePresence.IsChildAgent)
+                return;
+
+            int currentTime = Environment.TickCount;
+            m_npcAnimationTimestamps[animID] = currentTime;
+            m_npcAnimationPriorities[animID] = priority;
+
+            if (m_scenePresence.Scene.DebugAnimations)
+                m_log.DebugFormat(
+                    "[SCENE PRESENCE ANIMATOR]: Adding NPC animation {0} with priority {1} and duration {2}ms for {3}",
+                    GetAnimName(animID), priority, duration, m_scenePresence.Name);
+
+            // Temporarily store the override duration for this specific animation
+            if (duration != NPC_ANIMATION_OVERRIDE_DURATION)
+            {
+                // Custom duration handling could be added here if needed
+            }
+
+            if (m_animations.Add(animID, m_scenePresence.ControllingClient.NextAnimationSequenceNumber, objectID))
+            {
+                SendAnimPack();
+                m_scenePresence.TriggerScenePresenceUpdated();
+            }
         }
     }
 }

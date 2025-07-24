@@ -502,6 +502,8 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api.Interfaces
               void osNpcPlayAnimation(LSL_Key npc, string animation);
         //ApiDesc Instructs a given NPC (key) to stop playing a given animation (name).
               void osNpcStopAnimation(LSL_Key npc, string animation);
+        //ApiDesc Instructs a given NPC (key) to play a given animation with specified priority (1-10) and duration (seconds).
+              void osNpcPlayAnimationAdvanced(LSL_Key npc, string animation, int priority, int duration);
         //ApiDesc Instructs a given NPC (key) to touch a given object (UUID) and link.
               void osNpcTouch(LSL_Key npcLSL_Key, LSL_Key object_key, LSL_Integer link_num);
         //ApiDesc Instructs a given NPC (key) to whisper a given message on a given channel.

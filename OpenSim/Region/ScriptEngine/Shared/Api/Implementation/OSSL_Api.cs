@@ -32,6 +32,7 @@ using OpenMetaverse.StructuredData;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
+using OpenSim.Region.Framework.Scenes.Animation;
 using OpenSim.Region.Framework.Scenes.Scripting;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared.Api.Interfaces;
@@ -3396,10 +3397,16 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             }
             m_host.TaskInventory.LockItemsForRead(false);
 
+            // Enhanced NPC animation support with priority handling
             if (animID.IsZero())
-                target.Animator.AddAnimation(animation, m_host.UUID);
+            {
+                // Use new NPC animation method with high priority for scripted animations
+                target.Animator.AddNPCAnimation(DefaultAvatarAnimations.GetDefaultAnimation(animation), m_host.UUID, 10, 8000);
+            }
             else
-                target.Animator.AddAnimation(animID, m_host.UUID);
+            {
+                target.Animator.AddNPCAnimation(animID, m_host.UUID, 10, 8000);
+            }
         }
 
         public void osNpcStopAnimation(LSL_Key npc, string animation)
@@ -3426,13 +3433,75 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                 if (item is not null && item.Type == (int)AssetType.Animation)
                     animID = item.AssetID;
                 else
-                    animID = UUID.Zero;
+                {
+                    // Try to get from default animations
+                    animID = DefaultAvatarAnimations.GetDefaultAnimation(animation);
+                }
             }
 
             if (animID.IsZero())
                 target.Animator.RemoveAnimation(animation);
             else
                 target.Animator.RemoveAnimation(animID, true);
+        }
+
+        /// <summary>
+        /// Play an NPC animation with specified priority and duration
+        /// </summary>
+        /// <param name="npc">NPC UUID</param>
+        /// <param name="animation">Animation name or UUID</param>
+        /// <param name="priority">Animation priority (1-10, higher = more important)</param>
+        /// <param name="duration">Duration in seconds to maintain priority (default 8)</param>
+        public void osNpcPlayAnimationAdvanced(LSL_Key npc, string animation, int priority, int duration)
+        {
+            CheckThreatLevel(ThreatLevel.High, "osNpcPlayAnimationAdvanced");
+
+            if (priority < 1) priority = 1;
+            if (priority > 10) priority = 10;
+            if (duration < 1) duration = 1;
+            if (duration > 60) duration = 60; // Max 60 seconds
+
+            INPCModule module = World.RequestModuleInterface<INPCModule>();
+            if (module is null)
+                return;
+
+            if (!UUID.TryParse(npc.m_string, out UUID npcID))
+                return;
+
+            ScenePresence target = World.GetScenePresence(npcID);
+            if (target is null || !target.IsNPC)
+                return;
+
+            if (!module.CheckPermissions(npcID, m_host.OwnerID))
+                return;
+
+            UUID animID = UUID.Zero;
+            m_host.TaskInventory.LockItemsForRead(true);
+            foreach (KeyValuePair<UUID, TaskInventoryItem> inv in m_host.TaskInventory)
+            {
+               if (inv.Value.Type == (int)AssetType.Animation)
+               {
+                   if (inv.Value.Name == animation)
+                   {
+                       animID = inv.Value.AssetID;
+                       break;
+                   }
+               }
+            }
+            m_host.TaskInventory.LockItemsForRead(false);
+
+            if (animID.IsZero())
+            {
+                animID = DefaultAvatarAnimations.GetDefaultAnimation(animation);
+                if (!animID.IsZero())
+                {
+                    target.Animator.AddNPCAnimation(animID, m_host.UUID, priority, duration * 1000);
+                }
+            }
+            else
+            {
+                target.Animator.AddNPCAnimation(animID, m_host.UUID, priority, duration * 1000);
+            }
         }
 
         public void osNpcWhisper(LSL_Key npc, int channel, string message)

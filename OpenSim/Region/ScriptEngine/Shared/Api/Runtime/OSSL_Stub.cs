@@ -884,6 +884,12 @@ namespace OpenSim.Region.ScriptEngine.Shared.ScriptBase
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void osNpcPlayAnimationAdvanced(LSL_Key npc, string animation, int priority, int duration)
+        {
+            m_OSSL_Functions.osNpcPlayAnimationAdvanced(npc, animation, priority, duration);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void osNpcWhisper(key npc, int channel, string message)
         {
             m_OSSL_Functions.osNpcWhisper(npc, channel, message);
