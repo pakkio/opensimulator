@@ -27,6 +27,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Text;
 using OpenMetaverse;
@@ -47,6 +48,75 @@ namespace OpenSim.Region.ScriptEngine.Yengine
          *   RunOne() - runs script for a time slice or until it volunteers to give up cpu  *
          *   CallSEH() - runs in the microthread to call the event handler                  *
         \************************************************************************************/
+
+        /**
+         * @brief Async version of PostEvent for non-blocking event processing
+         */
+        public async Task<bool> PostEventAsync(EventParams evt)
+        {
+            var operationId = AsyncSafetyMonitor.TrackOperationStart("PostEventAsync", evt.EventName);
+            try
+            {
+                var result = await Task.Run(() => PostEvent(evt));
+                AsyncSafetyMonitor.TrackOperationEnd(operationId, result);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                AsyncSafetyMonitor.TrackOperationEnd(operationId, false);
+                m_log.ErrorFormat("[YEngine] PostEventAsync error: {0}", ex.Message);
+                throw;
+            }
+        }
+
+        /**
+         * @brief Batch process multiple events asynchronously for better performance
+         */
+        public async Task<int> PostEventBatchAsync(List<EventParams> events, int batchSize = 10)
+        {
+            var operationId = AsyncSafetyMonitor.TrackOperationStart("PostEventBatchAsync", $"batch-{events.Count}");
+            try
+            {
+                int processedCount = 0;
+                var semaphore = new SemaphoreSlim(batchSize, batchSize);
+                var tasks = new List<Task<bool>>();
+
+                foreach (var evt in events)
+                {
+                    await semaphore.WaitAsync();
+                    
+                    var task = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            return await PostEventAsync(evt);
+                        }
+                        finally
+                        {
+                            semaphore.Release();
+                        }
+                    });
+                    
+                    tasks.Add(task);
+                }
+
+                var results = await Task.WhenAll(tasks);
+                
+                foreach (bool success in results)
+                {
+                    if (success) processedCount++;
+                }
+
+                AsyncSafetyMonitor.TrackOperationEnd(operationId, processedCount > 0);
+                return processedCount;
+            }
+            catch (Exception ex)
+            {
+                AsyncSafetyMonitor.TrackOperationEnd(operationId, false);
+                m_log.ErrorFormat("[YEngine] PostEventBatchAsync error: {0}", ex.Message);
+                throw;
+            }
+        }
 
         /**
          * @brief This can be called in any thread (including the script thread itself)

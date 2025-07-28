@@ -48,6 +48,7 @@ using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Timers;
 using System.Xml;
 
@@ -118,6 +119,93 @@ namespace OpenSim.Region.ScriptEngine.Yengine
         public XMRInstQueue m_SleepQueue = new();
         private string m_LockedDict = "nobody";
         private ThreadPriority m_workersPrio;
+        
+        // Async processing enhancements
+        private readonly SemaphoreSlim m_AsyncEventSemaphore = new(Environment.ProcessorCount * 2, Environment.ProcessorCount * 2);
+        private bool m_UseAsyncProcessing = false;
+
+        /**
+         * @brief Async batch event posting for multiple instances
+         */
+        public async Task<int> PostEventBatchAsync(Dictionary<UUID, EventParams> events)
+        {
+            if (!m_UseAsyncProcessing || events.Count == 0)
+            {
+                // Fallback to synchronous processing
+                int syncCount = 0;
+                foreach (var kvp in events)
+                {
+                    if (m_InstancesDict.TryGetValue(kvp.Key, out XMRInstance inst))
+                    {
+                        if (inst.PostEvent(kvp.Value))
+                            syncCount++;
+                    }
+                }
+                return syncCount;
+            }
+
+            var tasks = new List<Task<bool>>();
+            int processedCount = 0;
+
+            foreach (var kvp in events)
+            {
+                UUID itemID = kvp.Key;
+                EventParams evt = kvp.Value;
+
+                await m_AsyncEventSemaphore.WaitAsync();
+                
+                var task = Task.Run(async () =>
+                {
+                    try
+                    {
+                        if (m_InstancesDict.TryGetValue(itemID, out XMRInstance inst))
+                        {
+                            return await inst.PostEventAsync(evt);
+                        }
+                        return false;
+                    }
+                    finally
+                    {
+                        m_AsyncEventSemaphore.Release();
+                    }
+                });
+                
+                tasks.Add(task);
+            }
+
+            var results = await Task.WhenAll(tasks);
+            
+            foreach (bool success in results)
+            {
+                if (success) processedCount++;
+            }
+
+            if (m_Verbose)
+                m_log.InfoFormat("[YEngine]: Async batch processed {0}/{1} events", processedCount, events.Count);
+
+            return processedCount;
+        }
+
+        /**
+         * @brief Cleanup and monitoring methods
+         */
+        public void StartAsyncMonitoring()
+        {
+            // Start periodic deadlock detection
+            System.Timers.Timer monitoringTimer = new(30000); // Every 30 seconds
+            monitoringTimer.Elapsed += (sender, e) => {
+                AsyncSafetyMonitor.CheckForDeadlocks();
+                AsyncSafetyMonitor.CleanupStaleOperations();
+            };
+            monitoringTimer.Start();
+            
+            m_log.Info("[YEngine]: Async safety monitoring started");
+        }
+        
+        public string GetAsyncStatistics()
+        {
+            return AsyncSafetyMonitor.GetStatistics();
+        }
         public Yengine()
         {
         }
@@ -216,6 +304,10 @@ namespace OpenSim.Region.ScriptEngine.Yengine
             m_ScriptDebug = m_Config.GetBoolean("ScriptDebug", false);
             m_ScriptDebugSaveSource = m_Config.GetBoolean("ScriptDebugSaveSource", false);
             m_ScriptDebugSaveIL = m_Config.GetBoolean("ScriptDebugSaveIL", false);
+            
+            // Enable async processing for improved performance
+            m_UseAsyncProcessing = m_Config.GetBoolean("UseAsyncProcessing", true);
+            m_log.InfoFormat("[YEngine]: UseAsyncProcessing={0}", m_UseAsyncProcessing);
 
             m_StackSize = m_Config.GetInt("ScriptStackSize", 2048) << 10;
             m_HeapSize = m_Config.GetInt("ScriptHeapSize", 1024) << 10;
